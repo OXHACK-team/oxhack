@@ -1,0 +1,29 @@
+{
+  "athlete-rig.png": {
+    "bytes": 1380915,
+    "size": [
+      1254,
+      1254
+    ],
+    "mode": "RGBA",
+    "sha256": "7a4cf6b5b3462bfbb7246e8d5b3520c695add67db99e106d7bdf134034399e8c"
+  },
+  "chrono-stadium.png": {
+    "bytes": 2615992,
+    "size": [
+      1586,
+      992
+    ],
+    "mode": "RGB",
+    "sha256": "4879607ddbf0cf167387287535232adf8758a5e70eabbcac7b990c4f8c6a7e67"
+  },
+  "game-atlas.png": {
+    "bytes": 3132305,
+    "size": [
+      1536,
+      1024
+    ],
+    "mode": "RGB",
+    "sha256": "45e340ed577ccbc2d499e403f3c86a8c911bf9bfc6acf2382667b1eb75bf3510"
+  }
+}
