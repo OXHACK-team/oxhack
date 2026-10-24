@@ -28,6 +28,14 @@ GAME_CARDS=[
 ]
 for card in GAME_CARDS:
     card["enabled"]=True
+SURVIVAL_RULES={
+    "red_green":["Jog on GREEN. Freeze on RED; you get time to stop.","Each portal starts another lap. Keep your time energy charged.","Moving on red costs a shield. Survive and build your score."],
+    "lightning":["Reach either hand onto an orb and hold briefly to charge it.","Orbs expire faster as time passes. A miss costs a shield.","Keep the chain alive. Twelve hits restore a lost shield."],
+    "dodge":["Read the incoming wall: lean LEFT, RIGHT or DUCK.","Walls approach faster over time. Hits cost one of five shields.","There is no finish line. Survive and chain clean dodges."],
+    "sprint":["Jog in place, alternating your knees, to charge time energy.","Run through endless portals. TIME WARP gives bonus speed.","The energy drain rises gradually. Empty energy costs a shield."],
+    "timekeeper":["Raise a hand when the shrinking ring meets the fixed ring.","Lower between beats. The rhythm gradually accelerates.","Missed beats cost shields. Twelve hits restore a lost shield."],
+    "echo":["WATCH your time echo, then REPEAT its poses in order.","Sequences grow from two poses to six. Each has time to react.","Complete endless echoes. Running out of recall time costs a shield."],
+}
 GAMES={card["id"]:card for card in GAME_CARDS}
 
 MODES={

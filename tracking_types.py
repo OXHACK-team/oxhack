@@ -17,6 +17,7 @@ class TrackingFrame:
     inference_ms: float = 0.
     aspect: float = 4 / 3
     poses: list = field(default_factory=list)  # all detected bodies, before lane assignment
+    x_bounds: tuple = (.015, .985)  # actual camera edges in this frame's coordinates
 
     @property
     def confidence(self):

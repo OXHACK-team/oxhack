@@ -21,7 +21,10 @@ class EchoShift(TimedGame):
     def new_sequence(self):
         self.round+=1
         self.sequence=[]
-        for _ in range(self.round+1):
+        length=min(6,2+(self.round-1)//2) if self.endless else self.round+1
+        self.show_seconds=self.pace(1.05,.80) if self.endless else 1.05
+        self.repeat_seconds=max(5.,length*self.pace(3.,2.)) if self.endless else 12.
+        for _ in range(length):
             self.sequence.append(self.rng.choice([p for p in POSES if not self.sequence or p!=self.sequence[-1]]))
         self.stage="WATCH"
         self.stage_age=self.pose_held=0.
@@ -30,7 +33,7 @@ class EchoShift(TimedGame):
 
     @property
     def shown_index(self):
-        return min(len(self.sequence)-1,int(self.stage_age/1.05))
+        return min(len(self.sequence)-1,int(self.stage_age/self.show_seconds))
 
     @property
     def expected(self):
@@ -39,7 +42,7 @@ class EchoShift(TimedGame):
     def advance(self,dt,actions):
         self.stage_age+=dt
         if self.stage=="WATCH":
-            if self.stage_age>=len(self.sequence)*1.05+.45:
+            if self.stage_age>=len(self.sequence)*self.show_seconds+.45:
                 self.stage="REPEAT"
                 self.stage_age=0.
                 self._event("echo_repeat",round=self.round)
@@ -50,13 +53,13 @@ class EchoShift(TimedGame):
                 self.step_index+=1
                 self.pose_held=0.
                 if self.step_index==len(self.sequence):
-                    if self.round>=3:
+                    if self.round>=3 and not self.endless:
                         self.stage="COMPLETE"
                         self.finish(True)
                     else:
                         self.stage="REST"
                         self.stage_age=0.
-            elif self.stage_age>12:
+            elif self.stage_age>self.repeat_seconds:
                 self.miss("TIME ECHO LOST. WATCH AGAIN.")
                 self.stage="WATCH"
                 self.stage_age=0.

@@ -32,13 +32,17 @@ class AIController:
     def act(self,game):
         key=game.game_id
         if key=="red_green":
-            self.notice(game,(game.phase,sum(e["event"].startswith("phase_") for e in game.events)))
+            self.notice(game,(game.phase,game.phase_number))
             if game.phase=="GREEN":
                 return MotionInput(run=self.speed,motion=2.)
             moving=game.phase_elapsed<self.delay or (self.mistake and game.phase_elapsed<1.)
             return MotionInput(motion=2. if moving else .04)
         if key=="sprint":
-            return MotionInput(run=self.speed,motion=2.)
+            # The rival fatigues in survival, just as a human does. A perfect
+            # unbounded jogger would strand an eliminated human in an endless wait.
+            import math
+            speed=self.speed*max(.25,math.exp(-game.elapsed/180.)) if game.endless else self.speed
+            return MotionInput(run=speed,motion=2.)
         if key=="lightning":
             age=self.notice(game,game.target_number)
             if age>self.delay and not self.mistake:

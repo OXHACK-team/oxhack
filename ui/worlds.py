@@ -3,6 +3,7 @@ import math
 import pygame
 from avatar import demonstration_pose
 from motion_input import MotionInput
+from tracking_types import neutral_pose
 from ui.art import gradient
 from ui.theme import *
 
@@ -28,15 +29,18 @@ class Worlds:
     def __init__(self,app):
         self.a=app
         self.surfaces={}
+        self.backgrounds={}
 
     def draw(self,destination,rect,game,slot,now):
         a=self.a
         w,h=rect.size
         if rect.size not in self.surfaces:
             self.surfaces[rect.size]=pygame.Surface(rect.size)
+            bg=a.art.image("stadium",w,h,80).copy()
+            bg.blit(gradient(w,h,110,140),(0,0))
+            self.backgrounds[rect.size]=bg
         s=self.surfaces[rect.size]
-        s.blit(a.art.image("stadium",w,h,80),(0,0))
-        s.blit(gradient(w,h,110,140),(0,0))
+        s.blit(self.backgrounds[rect.size],(0,0))
         color=CYAN if slot==0 else ORANGE
         actions=a.match.last_inputs[slot]
         pose=None
@@ -50,6 +54,7 @@ class Worlds:
         else:
             name="RUN" if actions.run>.1 else "DUCK" if actions.crouch else "LEFT" if actions.lean<-.2 else "RIGHT" if actions.lean>.2 else "HANDS UP" if actions.left_up and actions.right_up else "LEFT HAND" if actions.left_up else "IDLE"
             pose=demonstration_pose(name,now)
+            neutral=neutral_pose()
         self.floor(s,w,h,color,game.elapsed)
         key=game.game_id
         if key in ("red_green","sprint"):
@@ -73,8 +78,9 @@ class Worlds:
             self.countdown(s,game,w,h)
         elif game.finished:
             panel(s,(w*.18,230,w*.64,124),(12,32,44),GREEN if game.won else ORANGE,24)
-            text(s,"FINISHED!" if game.won else "TIME'S UP",(w*.5,272),40,GREEN if game.won else ORANGE,True,True)
-            text(s,"Waiting for the other competitor" if len(a.match.games)>1 and not a.match.finished else "Your result is ready",(w*.5,321),18,MUTED,center=True)
+            text(s,"RUN COMPLETE" if game.endless else "FINISHED!" if game.won else "TIME'S UP",(w*.5,272),40,GREEN if game.won else ORANGE,True,True)
+            message="Other player still going / your score is safe" if len(a.match.games)>1 and not a.match.finished else f"{game.score:,} POINTS / RESULTS NEXT" if game.endless else "Your result is ready"
+            fit_text(s,message,(w*.5,321),w*.60,18,MUTED,center=True)
         destination.blit(s,rect)
         pygame.draw.rect(destination,(73,104,123),rect,1,border_radius=17)
 
@@ -171,7 +177,7 @@ class Worlds:
         target=67
         t=g.beat_age/g.target_time
         radius=round(max(24,167-t*100))
-        near=abs(g.beat_age-g.target_time)<=g.config.beat_window_seconds
+        near=abs(g.beat_age-g.target_time)<=g.window
         for i in range(24):
             angle=i*math.tau/24
             x,y=center[0]+math.sin(angle)*114,center[1]+math.cos(angle)*114
@@ -185,7 +191,7 @@ class Worlds:
     def echo(self,s,g,w,h,now):
         watching=g.stage=="WATCH"
         pose=g.sequence[g.shown_index] if watching else "IDLE"
-        self.a.avatar.draw(s,demonstration_pose(pose,now),w*.74,248,245,4/3,now,True,color=PURPLE)
+        self.a.avatar.draw(s,demonstration_pose(pose,now),w*.74,248,245,4/3,now,True,neutral=neutral_pose(),color=PURPLE)
         if watching:
             message="WATCH: "+pose
         elif g.stage=="COMPLETE":
@@ -213,16 +219,26 @@ class Worlds:
         name=self.a.match.names[slot]
         pill(s,name.upper(),(21,19),color,15)
         panel(s,(w-146,17,125,72),(9,26,41),EDGE,14)
-        text(s,"SECONDS",(w-126,28),12,MUTED,mono=True)
-        text(s,f"{g.remaining:04.1f}",(w-129,46),30,WHITE,True,mono=True)
+        text(s,"SURVIVED" if g.endless else "SECONDS",(w-126,28),12,MUTED,mono=True)
+        text(s,f"{g.elapsed if g.endless else g.remaining:04.1f}",(w-129,46),30,WHITE,True,mono=True)
         if g.metric=="score":
             text(s,f"{g.score:,} PTS",(24,65),26,WHITE,True)
         else:
             text(s,f"{g.elapsed:.1f}s ELAPSED",(24,65),18,MUTED,mono=True)
         if hasattr(g,"feedback_until") and g.elapsed<g.feedback_until:
-            y=225 if g.game_id=="echo" else h-52
+            y=225 if g.game_id=="echo" else h-79 if g.endless and g.game_id in ("sprint","red_green") else h-63 if g.endless else h-52
             fit_text(s,g.feedback,(w*.5,y),w*.8,24,RED if g.feedback_kind=="error" else GREEN,True,True)
-        if g.game_id!="echo":
+        if g.endless:
+            text(s,f"LEVEL {g.level:02d}",(24,h-31),17,color,True,mono=True)
+            for i in range(g.max_lives):
+                pygame.draw.circle(s,GREEN if i<g.lives else EDGE,(w-34-i*24,h-24),7,0 if i<g.lives else 2)
+            if g.game_id in ("sprint","red_green"):
+                panel(s,(w*.28,h-28,w*.42,8),(51,76,91),None,4)
+                pygame.draw.rect(s,GREEN if g.energy>30 else ORANGE,(w*.28,h-28,max(2,w*.42*g.energy/100),8),border_radius=4)
+                text(s,"TIME ENERGY",(w*.49,h-42),11,MUTED,center=True,mono=True)
+            if g.elapsed<g.level_until:
+                pill(s,"TIME ACCELERATES / LEVEL "+str(g.level),(w//2-146,19),ORANGE,13)
+        elif g.game_id!="echo":
             panel(s,(24,h-25,w-48,7),(51,76,91),None,4)
             if g.progress:
                 pygame.draw.rect(s,color,(24,h-25,max(5,(w-48)*g.progress),7),border_radius=4)

@@ -5,8 +5,9 @@ from tracking_types import *
 
 
 class PlayerManager:
-    def __init__(self, config):
+    def __init__(self, config, label="Player 1"):
         self.config = config
+        self.label = label
         self.reset()
 
     def reset(self):
@@ -27,13 +28,28 @@ class PlayerManager:
         self.valid = False
         self.message = "Step back until your body is visible."
 
+    def request_rejoin(self):
+        """Rearm body registration without requiring a mouse or ending the match."""
+        if self.needs_rejoin:
+            return
+        self.registered = self.valid = False
+        self.needs_rejoin = True
+        self.neutral = self.smoothed = None
+        self.last_timestamp = None
+        self.last_scale = None
+        self.join_started = self.calibration_started = None
+        self.join_progress = self.calibration_progress = 0.
+        self.samples.clear()
+        self.message = "Stand still with arms down, then raise a hand to reconnect."
+
     def update(self, frame, now):
         self.valid = False
         p = frame.landmarks
         fresh = now - frame.timestamp <= self.config.tracking_stale_seconds
         enough = p is not None and frame.people == 1 and frame.confidence >= self.config.tracking_confidence
         if enough:
-            enough = bool(np.all((p[CORE, :2] > .015) & (p[CORE, :2] < .985)))
+            enough = bool(np.all((p[CORE, 0] > frame.x_bounds[0]) & (p[CORE, 0] < frame.x_bounds[1])) and
+                          np.all((p[CORE, 1] > .015) & (p[CORE, 1] < .985)))
         if not fresh or not enough:
             self._lost(now, frame.status if p is None or frame.people > 1 else "Move farther back: head, hands and feet must be visible")
             return False
@@ -43,9 +59,6 @@ class PlayerManager:
             if np.linalg.norm((center - self.last_center) * [frame.aspect, 1]) > self.body_scale * 1.25 or not .55 < scale / self.last_scale < 1.8:
                 self._lost(now, "Player position changed. Return to your spot or recalibrate.")
                 return False
-        if self.needs_rejoin:
-            self.message = "Player disconnected. Use REJOIN to calibrate again."
-            return False
         self.last_good = now
         self.last_center, self.last_scale = center, max(.08, scale)
         self.valid = True
@@ -55,7 +68,7 @@ class PlayerManager:
             self.smoothed = p.copy() if self.smoothed is None else self.smoothed + alpha * (p - self.smoothed)
             self.last_timestamp = frame.timestamp
         if self.registered:
-            self.message = "Player 1 connected"
+            self.message = f"{self.label} connected"
             return True
         raised = min(p[LW, 1], p[RW, 1]) < p[NOSE, 1] - .035
         if self.neutral is None:
@@ -89,7 +102,8 @@ class PlayerManager:
             self.join_progress = min(1., (now - self.join_started) / self.config.join_hold_seconds)
             if self.join_progress >= 1:
                 self.registered = True
-                self.message = "PLAYER 1 CONNECTED"
+                self.needs_rejoin = False
+                self.message = f"{self.label.upper()} CONNECTED"
                 return True
         else:
             self.join_started = None
@@ -104,6 +118,8 @@ class PlayerManager:
             self.samples.clear()
             self.calibration_started = None
             self.calibration_progress = 0.
+            if self.last_good is not None and now-self.last_good>self.config.rejoin_after_seconds:
+                self.neutral=self.smoothed=None
+                self.last_timestamp=None
         if self.registered and self.last_good is not None and now - self.last_good > self.config.rejoin_after_seconds:
-            self.needs_rejoin = True
-            self.message = "Player disconnected. Use REJOIN to calibrate again."
+            self.request_rejoin()

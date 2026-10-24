@@ -1,9 +1,10 @@
 """Walk-up-friendly console-style navigation, six-game gallery and match screens."""
 import math
 import pygame
-from games import GAME_CARDS,MODES
+from games import GAME_CARDS,MODES,SURVIVAL_RULES
 from match import ranking_key
 from avatar import demonstration_pose
+from tracking_types import neutral_pose
 from ui.art import gradient
 from ui.components import Button,GameCard,ModeCard
 from ui.worlds import Worlds,playfields,hand_area
@@ -45,6 +46,11 @@ class Screens:
             return self.modes+common
         if scene=="briefing":
             result=[b("start",(760,743,640,73),"START THE CHALLENGE",color=ORANGE,primary=True)]
+            result+=[b("variant_endless",(64,600,305,62),"ENDLESS SURVIVAL",color=ORANGE,primary=a.config.endless),
+                     b("variant_challenge",(385,600,305,62),"TIMED CHALLENGE",color=CYAN,primary=not a.config.endless)]
+            if a.session_mode=="party" and a.party_results:
+                for button in result[1:]:
+                    button.enabled=False
             if a.session_mode=="ai":
                 result+=[b("difficulty_"+key,(760+i*217,649,206,54),key.upper(),color=PURPLE,primary=a.config.ai_difficulty==key) for i,key in enumerate(("easy","normal","hard"))]
             elif a.session_mode=="party":
@@ -64,8 +70,8 @@ class Screens:
         if scene=="game" and a.match and a.match.paused:
             valid=all(a.bank.players[i].valid and a.bank.players[i].registered or a.match.games[i].finished for i in range(a.match.human_count))
             return [b("resume",(480,472,480,67),"RESUME",color=ORANGE,enabled=valid,primary=True),
-                    b("rejoin",(480,555,480,62),"REJOIN / START FRESH",color=PURPLE),
-                    b("all_games",(480,633,480,62),"CHOOSE ANOTHER GAME")]+common
+                    b("rejoin",(480,555,480,62),"RECONNECT / KEEP THIS RUN",color=PURPLE),
+                    b("end_run",(480,633,480,62),"BANK SCORE / RESULTS",color=CYAN)]+common
         if scene=="results":
             next_turn=a.session_mode=="party" and a.party_index+1<a.party_count
             return [b("next_player" if next_turn else "again",(40,737,420,77),f"PLAYER {a.party_index+2} / NEXT" if next_turn else "REMATCH",color=ORANGE,primary=True),
@@ -92,6 +98,20 @@ class Screens:
         getattr(self,"draw_"+a.scene)(now)
         self.header(now)
         self.footer()
+    def reconnect_overlay(self,now):
+        a=self.a
+        s=a.canvas
+        shade=pygame.Surface((W,H),pygame.SRCALPHA)
+        shade.fill((4,16,29,210))
+        s.blit(shade,(0,0))
+        panel(s,(345,280,750,324),(16,36,53),CYAN,24)
+        player=a.bank.players[0]
+        title="RAISE A HAND TO RECONNECT" if player.neutral is not None else "STEP BACK INTO THE ARENA"
+        text(s,title,(720,325),31,CYAN,True,True)
+        wrapped(s,player.message,(394,385),650,23,WHITE)
+        wrapped(s,"Stand still with arms down, then hold a hand above your head. Your menu is saved.",(394,461),650,20,MUTED)
+        progress=player.join_progress if player.neutral is not None else player.calibration_progress
+        ring(s,(720,556),22,progress,CYAN,4)
 
     def header(self,now):
         a=self.a
@@ -249,7 +269,7 @@ class Screens:
         pill(s,a.card["tag"],(62,234),a.card["color"],14)
         wrapped(s,a.card["control"],(66,695),610,36,WHITE,bold=True)
         text(s,"THREE THINGS TO KNOW",(760,223),24,a.card["color"],True)
-        for i,rule in enumerate(a.card["rules"]):
+        for i,rule in enumerate(SURVIVAL_RULES[a.selected_game] if a.config.endless else a.card["rules"]):
             y=273+i*113
             panel(s,(760,y,640,96),(17,36,53),EDGE,17)
             ring(s,(796,y+45),20,1.,a.card["color"],2)
@@ -291,7 +311,7 @@ class Screens:
         self.title("WALK UP. STEP IN. PLAY.","No controller. No complicated setup. Just you and the clock.")
         panel(s,(40,220,674,596),(13,33,49),EDGE,22)
         pose=["IDLE","LEFT HAND","LEFT","DUCK","RUN"][int(now/2)%5]
-        a.avatar.draw(s,demonstration_pose(pose,now),377,273,351,now=now)
+        a.avatar.draw(s,demonstration_pose(pose,now),377,273,351,now=now,neutral=neutral_pose())
         pill(s,"YOUR AVATAR COPIES YOUR MOVEMENT",(183,698),CYAN,14)
         steps=[("01","GET IN VIEW","Keep your head, hands and feet visible. Stand still with arms down."),
                ("02","RAISE TO JOIN","Raise either hand above your head for 1.2 seconds."),
@@ -323,20 +343,25 @@ class Screens:
         self.title(a.card["title"],MODES[a.session_mode][0]+"  /  "+a.card["control"])
         for i,(rect,game) in enumerate(zip(playfields(len(a.match.games)),a.match.games)):
             self.worlds.draw(s,rect,game,i,now)
-        pill(s,"PAUSE: ESC / P",(40,791),MUTED,13)
-        fit_text(s,a.card["description"],(326,795),1060,21,MUTED)
+        pill(s,"RUN BANKED" if a.match.finished else "POINT AT PAUSE + HOLD",(40,791),MUTED,13)
+        fit_text(s,"Your score is saved. Results are coming up..." if a.match.finished else "ENDLESS SURVIVAL / Keep going. Build your score." if a.config.endless else a.card["description"],(326,795),1060,21,MUTED)
         if a.match.paused:
             overlay=pygame.Surface((W,H),pygame.SRCALPHA)
             overlay.fill((4,16,29,210))
             s.blit(overlay,(0,0))
             panel(s,(398,237,644,493),(16,36,53),ORANGE,24)
-            text(s,"TIME IS ON HOLD",(720,288),41,ORANGE,True,True)
-            missing=[i+1 for i in range(a.match.human_count) if not a.bank.players[i].valid]
+            countdown=a.match.recovery_countdown
+            text(s,f"BACK IN {math.ceil(countdown)}" if countdown>0 else "TIME IS ON HOLD",(720,288),41,ORANGE,True,True)
+            missing=[i+1 for i in range(a.match.human_count) if not (a.bank.players[i].valid and a.bank.players[i].registered) and not a.match.games[i].finished]
             message="Take a breather. Everyone's clock is paused."
             if missing:
-                message="Player "+", ".join(map(str,missing))+": return with your full body visible."
+                message="Player "+", ".join(map(str,missing))+": stand still, arms down; then raise a hand to rejoin."
+            elif countdown>0:
+                message="Players ready. Your score is safe. Get back into position."
             wrapped(s,message,(446,344),550,23,WHITE)
-            wrapped(s,"Stay in your camera lane. Rejoin starts a fresh match; mouse and Enter work here.",(446,407),550,18,MUTED)
+            wrapped(s,"Reconnect with your body. Your run resumes automatically. P1 stays LEFT; P2 stays RIGHT." if a.dual_active else "Reconnect with your body. Your run resumes automatically after a short countdown.",(446,415),550,18,MUTED)
+            if missing:
+                self.preview((1068,504,312,208),now)
 
     def draw_results(self,now):
         a=self.a
@@ -350,13 +375,13 @@ class Screens:
         else:
             entries=sorted(zip(a.match.names,a.match.games),key=lambda row:ranking_key(row[1]),reverse=True)
             tied=len(a.match.winner_indices)>1
-            title="IT'S A TIE!" if tied and len(entries)>1 else entries[0][0].upper()+" WINS" if len(entries)>1 else "CHALLENGE COMPLETE"
+            title="IT'S A TIE!" if tied and len(entries)>1 else entries[0][0].upper()+" WINS" if len(entries)>1 else "RUN COMPLETE / GO AGAIN?" if g.endless else "CHALLENGE COMPLETE"
         champion=a.session_mode=="party" and not next_turn
         shown_name=entries[0][0] if champion else a.current_name
         if champion:
             g=entries[0][1]
         self.title(title,a.card["title"]+"  /  "+MODES[a.session_mode][0])
-        celebratory=g.won or a.personal_best
+        celebratory=g.won or a.personal_best or (g.endless and g.score>0)
         if celebratory:
             for i in range(70):
                 x=(i*179+math.sin(now+i)*24)%W
@@ -373,11 +398,11 @@ class Screens:
         best=a.previous_best
         if champion:
             lookup=a.storage.best if g.metric=="time" else a.storage.best_score
-            best=lookup(shown_name,a.mode,a.selected_game,a.session_mode)
+            best=lookup(shown_name,a.mode,a.selected_game,a.session_mode,a.variant)
         if current_value is not None:
             best=current_value if best is None else min(best,current_value) if g.metric=="time" else max(best,current_value)
         values=[("PERSONAL BEST","--" if best is None else f"{best:.2f}s" if g.metric=="time" else f"{best:,}"),
-                ("TIME LEFT",f"{g.remaining:.1f}s"),("VIOLATIONS" if g.game_id=="red_green" else "MISSES",str(g.violations))]
+                ("SURVIVED" if g.endless else "TIME LEFT",f"{g.elapsed if g.endless else g.remaining:.1f}s"),("LEVEL REACHED" if g.endless else "VIOLATIONS" if g.game_id=="red_green" else "MISSES",str(g.level if g.endless else g.violations))]
         for i,(label,value) in enumerate(values):
             x=68+i*245
             panel(s,(x,510,224,142),(21,44,61),EDGE,16)
@@ -395,7 +420,7 @@ class Screens:
                 val=f"{game.elapsed:.2f}s" if game.metric=="time" and game.won else f"{game.progress:.0%}" if game.metric=="time" else f"{game.score:,}"
                 fit_text(s,val,(1248,y+20),115,21,WHITE,True)
         else:
-            rows=a.storage.leaderboard(a.mode,4,a.selected_game,a.session_mode,g.metric)
+            rows=a.storage.leaderboard(a.mode,4,a.selected_game,a.session_mode,g.metric,a.variant)
             if not rows:
                 wrapped(s,"Your first finish starts the leaderboard. Give it another go.",(891,329),455,23,MUTED)
             for i,(name,value,_) in enumerate(rows):

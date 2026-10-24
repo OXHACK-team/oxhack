@@ -34,7 +34,7 @@ def ideal(game):
 
 
 def run_game(key,policy=ideal,seed=123):
-    game=GAMES[key]["factory"](Config(),0,random.Random(seed))
+    game=GAMES[key]["factory"](Config(endless=False),0,random.Random(seed))
     for i in range(1,60*100):
         update_game(game,i/60,policy(game),True)
         if game.finished:
@@ -62,7 +62,7 @@ class ArcadeTests(unittest.TestCase):
             if key=="red_green":
                 continue
             with self.subTest(game=key):
-                g=GAMES[key]["factory"](Config(),0,random.Random(1))
+                g=GAMES[key]["factory"](Config(endless=False),0,random.Random(1))
                 g.update(4,MotionInput(),True)
                 before=(g.elapsed,g.progress,g.score)
                 g.update(4.01,ideal(g),False)
@@ -78,7 +78,7 @@ class ArcadeTests(unittest.TestCase):
         self.assertFalse(g.won)
 
     def test_orbs_require_reaching_and_holding(self):
-        g=GAMES["lightning"]["factory"](Config(),0,random.Random(1))
+        g=GAMES["lightning"]["factory"](Config(endless=False),0,random.Random(1))
         g.update(3,MotionInput())
         target=g.target
         g.update(3.03,MotionInput(right_hand=target))
@@ -90,14 +90,14 @@ class ArcadeTests(unittest.TestCase):
         self.assertNotEqual(g.target,target)
 
     def test_echo_score_alone_cannot_replace_sequence_completion(self):
-        g=GAMES["echo"]["factory"](Config(),0,random.Random(1))
+        g=GAMES["echo"]["factory"](Config(endless=False),0,random.Random(1))
         g.score=10000
         g.update(60,MotionInput())
         self.assertTrue(g.finished)
         self.assertFalse(g.won)
 
     def test_only_correct_dodge_saves_shield(self):
-        g=GAMES["dodge"]["factory"](Config(),0,random.Random(3))
+        g=GAMES["dodge"]["factory"](Config(endless=False),0,random.Random(3))
         g.update(3,MotionInput())
         required=g.required
         wrong=pose_input("RIGHT" if required!="RIGHT" else "DUCK")
@@ -121,7 +121,7 @@ class OpponentAndMatchTests(unittest.TestCase):
             self.assertEqual((first.score,first.won,round(first.elapsed,4)),(second.score,second.won,round(second.elapsed,4)))
 
     def test_shared_match_clock_and_identical_seeded_challenges(self):
-        match=Match(Config(),"dodge","duo",0,seed=9)
+        match=Match(Config(endless=False),"dodge","duo",0,seed=9)
         self.assertEqual(match.games[0].required,match.games[1].required)
         match.update(4,[MotionInput(),MotionInput()],[True,True])
         before=[g.elapsed for g in match.games]
@@ -132,7 +132,7 @@ class OpponentAndMatchTests(unittest.TestCase):
         self.assertEqual(before,[g.elapsed for g in match.games])
 
     def test_two_players_control_independent_scores(self):
-        match=Match(Config(),"lightning","duo",0,seed=1)
+        match=Match(Config(endless=False),"lightning","duo",0,seed=1)
         for i in range(1,60*45):
             match.update(i/60,[MotionInput(),ideal(match.games[1])],[True,True])
             if match.finished:
@@ -143,22 +143,22 @@ class OpponentAndMatchTests(unittest.TestCase):
         self.assertEqual(match.winner_indices,[1])
 
     def test_completed_human_does_not_pause_ai_when_leaving(self):
-        match=Match(Config(),"sprint","ai",0,seed=7)
+        match=Match(Config(endless=False),"sprint","ai",0,seed=7)
         match.games[0].finished=match.games[0].won=True
         match.update(4,[MotionInput()],[False])
         self.assertGreater(match.games[1].elapsed,0)
         self.assertFalse(match.paused)
 
     def test_party_turns_get_same_pose_sequences(self):
-        first=Match(Config(),"echo","party",0,seed=77)
-        second=Match(Config(),"echo","party",500,seed=77)
+        first=Match(Config(endless=False),"echo","party",0,seed=77)
+        second=Match(Config(endless=False),"echo","party",500,seed=77)
         self.assertEqual(first.games[0].sequence,second.games[0].sequence)
 
 
 class LaneTests(unittest.TestCase):
     def test_hand_switch_margin_scales_with_camera_distance(self):
         from tracking_types import LW,RW
-        g=GestureController(Config())
+        g=GestureController(Config(endless=False))
         p=neutral_pose()
         p[:,:2]=(p[:,:2]-.5)*.6+.5
         p[LW,1]-=.3
@@ -173,13 +173,13 @@ class LaneTests(unittest.TestCase):
     def test_cursor_mapping_is_consistent_between_solo_and_duo(self):
         sim=SimulatedInput()
         source=sim.sample(0,.03,cursor=(1080,770))
-        g=GestureController(Config())
+        g=GestureController(Config(endless=False))
         solo=g.hand_position(source,source.landmarks,.03)
         p=source.landmarks.copy()
         p[:,0]=(p[:,0]-.5)*1.5+.5
         p[:,1]=(p[:,1]-.5)*.75+.5
         duo=TrackingFrame(0,p,people=1,aspect=2/3)
-        mapped=GestureController(Config()).hand_position(duo,p,.03)
+        mapped=GestureController(Config(endless=False)).hand_position(duo,p,.03)
         np.testing.assert_allclose(solo,mapped,atol=1e-8)
 
     def frame(self,t,reverse=False,centers=(.25,.75)):
@@ -194,7 +194,7 @@ class LaneTests(unittest.TestCase):
         return TrackingFrame(t,people=len(poses),poses=poses)
 
     def test_detector_order_does_not_swap_lanes(self):
-        bank=PlayerBank(Config())
+        bank=PlayerBank(Config(endless=False))
         bank.update(self.frame(1),1,True)
         first=[p.smoothed.copy() for p in bank.players]
         bank.update(self.frame(1.04,True),1.04,True)
@@ -203,23 +203,23 @@ class LaneTests(unittest.TestCase):
             np.testing.assert_allclose(first[i],p.smoothed)
 
     def test_crossing_lanes_requires_explicit_rejoin(self):
-        bank=PlayerBank(Config())
+        bank=PlayerBank(Config(endless=False))
         bank.update(self.frame(1),1,True)
         for p in bank.players:
             p.registered=True
         bank.update(self.frame(1.04,centers=(.49,.51)),1.04,True)
         self.assertTrue(all(p.needs_rejoin for p in bank.players))
         bank.update(self.frame(1.08),1.08,True)
-        self.assertFalse(any(p.valid for p in bank.players))
+        self.assertFalse(any(p.registered for p in bank.players))
 
     def test_missing_partner_does_not_give_other_body_to_them(self):
-        bank=PlayerBank(Config())
+        bank=PlayerBank(Config(endless=False))
         bank.update(self.frame(1,centers=(.75,)),1,True)
         self.assertFalse(bank.players[0].valid)
         self.assertTrue(bank.players[1].valid)
 
     def test_two_people_are_rejected_in_solo_mode(self):
-        bank=PlayerBank(Config())
+        bank=PlayerBank(Config(endless=False))
         bank.update(self.frame(1),1,False)
         self.assertFalse(bank.players[0].valid)
 

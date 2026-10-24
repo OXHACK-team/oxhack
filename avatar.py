@@ -46,9 +46,15 @@ class Avatar:
 
     def draw(self,surface,pose,center_x,top,height=430,aspect=4/3,now=0.,ghost=False,neutral=None,color=None):
         p=demonstration_pose(now=now) if pose is None else pose.copy()
-        if neutral is not None:
-            hip=np.mean(neutral[[LH,RH],:2],axis=0)
-            torso=max(.08,hip[1]-float(np.mean(neutral[[LS,RS],1])))
+        if pose is None:
+            aspect=4/3
+        # Before calibration the camera position is not an arena spawn point.
+        # Normalize the visible body immediately so off-centre arrivals stay on
+        # their own platform, at the same scale as a calibrated avatar.
+        reference=neutral if neutral is not None else p
+        if pose is not None:
+            hip=np.mean(reference[[LH,RH],:2],axis=0)
+            torso=max(.08,hip[1]-float(np.mean(reference[[LS,RS],1])))
             factor=.26/torso
             p[:,0]=.5+(p[:,0]-hip[0])*factor*aspect/(4/3)
             p[:,1]=.55+(p[:,1]-hip[1])*factor

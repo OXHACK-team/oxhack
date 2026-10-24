@@ -17,7 +17,7 @@ from tracking_types import *
 
 class RegistrationTests(unittest.TestCase):
     def setUp(self):
-        self.cfg=Config()
+        self.cfg=Config(endless=False)
         self.player=PlayerManager(self.cfg)
         self.sim=SimulatedInput()
         self.now=0.
@@ -71,7 +71,11 @@ class RegistrationTests(unittest.TestCase):
         self.feed(3.2,lost=True)
         self.assertTrue(self.player.needs_rejoin)
         self.feed(.5)
-        self.assertFalse(self.player.valid)
+        self.assertFalse(self.player.registered)
+        self.feed(1.0)
+        self.feed(1.3,raise_hand=True)
+        self.assertTrue(self.player.registered)
+        self.assertFalse(self.player.needs_rejoin)
 
     def test_unexpected_player_jump_rejected(self):
         self.join()
@@ -89,7 +93,7 @@ class RegistrationTests(unittest.TestCase):
 
 class MovementTests(unittest.TestCase):
     def measure(self, generator, scale=.26):
-        d=MovementDetector(Config())
+        d=MovementDetector(Config(endless=False))
         scores=[]
         for i in range(180):
             t=i/30
@@ -132,7 +136,7 @@ class MovementTests(unittest.TestCase):
         np.testing.assert_allclose(first,second,atol=1e-10)
 
     def test_duplicate_frames_do_not_create_motion(self):
-        d=MovementDetector(Config())
+        d=MovementDetector(Config(endless=False))
         p=neutral_pose()
         d.update(p,1,.26)
         p[LW,1]-=.2
@@ -143,7 +147,7 @@ class DwellTests(unittest.TestCase):
     def setUp(self):
         import pygame
         from ui.components import Button
-        self.g=GestureController(Config())
+        self.g=GestureController(Config(endless=False))
         self.buttons=[Button("one",pygame.Rect(0,0,100,100),"ONE"),Button("two",pygame.Rect(150,0,100,100),"TWO",enabled=False)]
 
     def test_dwell_select_once_then_requires_release(self):
@@ -171,7 +175,7 @@ class DwellTests(unittest.TestCase):
 
 class GameTests(unittest.TestCase):
     def game(self,**changes):
-        cfg=Config(**changes)
+        cfg=Config(endless=False,**changes)
         g=RedLightGreenLight(cfg,0,random.Random(5))
         g.update(3,0,0)
         return g
@@ -221,7 +225,7 @@ class GameTests(unittest.TestCase):
         self.assertEqual(g.violations,1)
 
     def test_countdown_overshoot_and_exact_finish_timestamp(self):
-        g=RedLightGreenLight(Config(forward_speed=1.),0,random.Random(1))
+        g=RedLightGreenLight(Config(endless=False,forward_speed=1.),0,random.Random(1))
         g.update(3.5,1,0)
         self.assertAlmostEqual(g.elapsed,.5)
         self.assertAlmostEqual(g.progress,.5)

@@ -34,6 +34,30 @@ game shows its relevant controls. Escape goes back or pauses a running match.
 
 ## Six playable games
 
+**Endless Survival is the default.** Each game continues beyond its old timer,
+with a score, survival clock, shields and a level every 25 active seconds.
+Portals start new laps; Echo Shift keeps creating sequences. The run ends when
+shields run out, or when you pause and choose **BANK SCORE / RESULTS**. A short
+finish announcement leads into results and a one-button rematch. Choose
+**TIMED CHALLENGE** on the briefing to play the original finite rules below.
+
+| Endless game | What gets harder | Fairness limits |
+| --- | --- | --- |
+| Red / Green | Shorter light cycles and higher energy drain | 0.5s stop grace; at most one shield lost per red light |
+| Lightning Strike | Orbs expire sooner | Expiry never below 1.4s; hit radius and hold remain unchanged |
+| Dodge or Die | Walls approach faster | Travel never below 1.6s; five shields |
+| Chrono Sprint | Time energy drains faster | Steady jogging replenishes energy; portals add energy and points |
+| Timekeeper | Beats accelerate and timing tightens | Period never below 1.8s; timing window never below 0.20s |
+| Echo Shift | Longer sequences and quicker demonstrations | At most six poses; at least 0.8s per demonstration and 2s recall per pose |
+
+Difficulty follows a smooth bounded curve rather than jumping in speed at level
+boundaries. Twelve consecutive scored actions restore one missing shield.
+Rendering stalls do not simulate unseen extra obstacles or drain seconds of
+energy. Tracking loss freezes every active competitor's clock and difficulty.
+Survival records are kept separate from timed records.
+
+![Two-player endless survival](artifacts/survival/duo-sprint.png)
+
 | Game | What you do | How TIME matters | Default challenge / record |
 | --- | --- | --- | --- |
 | **Red Light, Green Light** | Jog on green; freeze on red | Choose when to move and when to stop | Finish within 60s; fastest completion |
@@ -74,16 +98,21 @@ timing variation and mistakes. Difficulty changes those parameters. It uses
 the same game engines, scoring, limits and seeded challenge patterns. No API
 key, paid model call or internet connection is required for opponents.
 
-In two-player mode, both people calibrate and raise a hand in the lobby. Stay
-inside your own camera lane. MediaPipe result ordering cannot exchange the
-players' controls. Crossing into ambiguous lanes locks control until rejoin.
+In two-player mode, both people calibrate and raise a hand in the lobby. The
+second player can arrive later; the first stays joined while waiting. Keep your
+hips in your own camera lane. Hands can reach across the centre divider while
+remaining inside the camera image. MediaPipe result ordering cannot exchange
+the players' controls. Ambiguous overlapping bodies pause control until the
+players separate, calibrate and raise a hand again. Avatars spawn centred on
+their own platforms, even before calibration.
 Player 1 normally drives shared menus; Player 2 can take over if Player 1 has
 stepped out. Each competitor has an independent game and score, with clocks
 paused together while an unfinished human is not reliably tracked.
 
-If a competitor finishes first, the other continues until their finish or
-timeout. The finished competitor can step out without pausing the remaining
-round. Party mode asks the next player to step into view and register afresh;
+If a competitor finishes first, the other continues. The finished competitor
+can step out without pausing the remaining round. In endless AI mode, the run
+ends when the human is eliminated, so NOVA cannot create an indefinite wait.
+Party mode asks the next player to step into view and register afresh;
 only the active player should be in view. The challenge seed is retained for
 every turn. Party standings update after each turn and announce the winner
 after everyone has played.
@@ -105,9 +134,12 @@ after everyone has played.
 Global: **Escape** back/pause, **P** pause/resume, **F1** diagnostics,
 **F2** restart in demo mode, **F3** hand control, **F11** fullscreen/windowed.
 Hold **L** in demo to simulate lost tracking. A short interruption recovers;
-long gaps require rejoining. Mouse movement switches to mouse control; choose
-USE HAND to resume gestures. Keyboard/mouse selection uses click/Enter rather
-than dwell.
+long gaps require neutral calibration followed by a raised-hand join, directly
+on the current screen. Point at **PAUSE** and hold to pause using your body;
+point at **RESUME** to continue after a two-second ready countdown. Mouse drift
+does not switch off webcam hand control. After an explicit mouse click, raise a
+hand briefly in a menu or pause screen to restore gestures, or use **USE HAND**.
+Keyboard/mouse selection uses click/Enter rather than dwell.
 
 ## Settings and camera positioning
 
@@ -126,10 +158,11 @@ tracking and requires visible bodies; similar people replacing one another at
 the same position cannot be identified reliably.
 
 On tracking loss, the game explains that time is on hold. All competitors'
-clocks pause together. Return to your position for a short interruption;
-**REJOIN / START FRESH** resets calibration and the match after a long gap.
-Use the mouse or Enter if tracking is unavailable. Recalibration ends the
-current round. A camera disconnect requires reconnecting/restarting capture or
+clocks pause together. Return to your position for a short interruption. After
+a long gap, stand still with arms down, then raise a hand to reconnect. The
+same run and scores are preserved; a two-second ready countdown resumes it
+automatically. No mouse is needed. Player 2 can drive menus if Player 1 leaves.
+Settings recalibration ends the current round. A camera disconnect requires reconnecting/restarting capture or
 switching to demo. Missing models and capture errors are shown in the UI.
 
 ## Installation on another computer
@@ -222,14 +255,16 @@ display and frame sampling introduce latency.
 `data/chrono_arena.sqlite3` stores completed human rounds. The upgrade migrates
 the original results table in place and preserves existing Red/Green records.
 Each entry includes UTC creation time, player, camera/demo source, game, match
-mode, challenge seed, outcome, score, elapsed/remaining time, violations and
+mode, survival/timed variant, challenge seed, outcome, score, elapsed/remaining time, violations and
 timestamped event JSON. Events cover phases, targets, misses, scoring, beats,
 echo sequences, tracking pauses/resumes and outcomes.
 
-Records and personal bests are separated by game, source and match mode. Time
+Records and personal bests are separated by game, source, match mode and
+survival/timed variant. Existing records migrate as timed challenges. Time
 games rank successful completion time; score games rank points. AI competitors
 do not enter human leaderboards. Party turns store one entry per person.
-Abandoned games do not create completed records. Write failures are surfaced
+Leaving for another game does not create a completed record; **BANK SCORE**
+explicitly saves a survival run. Write failures are surfaced
 in the interface.
 
 ## Automated verification
@@ -239,6 +274,7 @@ in the interface.
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe -m unittest discover -v
 .\.venv\Scripts\python.exe main.py --smoke-test
+.\.venv\Scripts\python.exe main.py --survival-test
 .\.venv\Scripts\python.exe scripts\verify_tracking.py --camera
 .\.venv\Scripts\python.exe scripts\benchmark.py --frames 300
 .\.venv\Scripts\python.exe scripts\benchmark.py --mode duo --game sprint --frames 300
@@ -253,6 +289,15 @@ idle Player 1 in every game, and can navigate after Player 1 steps out. It
 expects exactly **41 human result rows**, including the extra rematch. PNGs and
 `acceptance-report.json` are under `artifacts/v2/`.
 
+The survival test runs all six games in all four modes, including two turns per
+party. Every human continues past 75 active seconds using 30 Hz synthetic body
+landmarks through the real calibration, movement, lane assignment and smoothing
+code. It verifies 36 human records, with reports/screenshots in
+`artifacts/survival/`. Unit regressions cover staggered joins, hands crossing the
+divider, disconnected players rejoining the same run, Player 2 taking menu
+control, body-only pause/resume, stable off-centre avatar spawns, bounded
+difficulty and three minutes of uninterrupted good play in every game.
+
 `verify_tracking.py` checks one-body and two-hand official reference images,
 negative blank input, and a two-body fixture made from the reference photograph.
 With `--camera`, it checks physical webcam capture, worker inference and cleanup.
@@ -263,14 +308,16 @@ Verified in this Windows workspace on **24 October 2026**:
 
 | Check | Observed result |
 | --- | --- |
-| Unit tests | 49 pass |
+| Unit tests | 66 pass |
 | Full body-input acceptance | All six games × Solo, AI, 2 Players and Party pass |
+| Endless survival acceptance | All 24 combinations pass; 36 human runs continue past 75s |
+| Join/reconnect regressions | Body-only late join, in-run recovery and P2 menu takeover pass |
 | Party handoffs | 2- and 4-player sessions pass |
 | Result integrity | One record per human finish; old schema migration passes |
-| Physical webcam | 640×480 frames, 91 distinct inference frames in a 3s probe |
+| Physical webcam | 640×480 frames, 90 distinct inference frames in the latest 3s probe |
 | Multi-pose reference fixture | Two bodies detected |
 | Native solo render + synthetic input | ~6.5ms median, ~146 uncapped FPS |
-| Native two-player render + synthetic input | ~7.9ms median, ~118 uncapped FPS |
+| Native two-player render + synthetic input | ~5.9ms median, ~174 uncapped FPS in the latest local run |
 | Resource cleanup | Camera and inference workers stop cleanly |
 
 These are local measurements; the rendering benchmarks measure simulated input

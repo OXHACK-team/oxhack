@@ -12,6 +12,8 @@ def update_game(game,now,actions,valid):
 
 
 def ranking_key(game):
+    if getattr(game,"endless",False):
+        return (game.score,round(game.elapsed,3),-game.violations)
     if game.metric=="time":
         return (int(game.won),-game.elapsed if game.won else game.progress)
     return (int(game.won),game.score,-game.violations)
@@ -29,6 +31,9 @@ class Match:
         self.manual_pause=False
         self.seed=seed
         self.last_inputs=[MotionInput() for _ in self.games]
+        self.last_update=now
+        self.recovery_countdown=0.
+        self.recovering=False
 
     @property
     def finished(self):
@@ -36,7 +41,7 @@ class Match:
 
     @property
     def paused(self):
-        return self.manual_pause or any(g.paused for g in self.games if not g.finished)
+        return self.manual_pause or self.recovery_countdown>0 or any(g.paused for g in self.games if not g.finished)
 
     @property
     def winner_indices(self):
@@ -44,10 +49,23 @@ class Match:
         return [i for i,g in enumerate(self.games) if ranking_key(g)==best]
 
     def update(self,now,inputs,validity):
+        dt=max(0.,now-self.last_update)
+        self.last_update=now
         reliable=not self.manual_pause and all(validity[i] or self.games[i].finished for i in range(self.human_count))
+        if not reliable:
+            self.recovering=True
+            self.recovery_countdown=0.
+        elif self.recovering:
+            self.recovering=False
+            self.recovery_countdown=2. if any(g.elapsed>0 and not g.finished for g in self.games) else 0.
+        elif self.recovery_countdown>0:
+            self.recovery_countdown=max(0.,self.recovery_countdown-dt)
+        reliable=reliable and self.recovery_countdown==0
         events=[]
         for i,game in enumerate(self.games):
             actions=inputs[i] if i<self.human_count else self.brain.act(game)
             self.last_inputs[i]=actions
             events.extend((i,event) for event in update_game(game,now,actions,reliable))
+        if self.brain and self.games[0].endless and self.games[0].finished and not self.games[1].finished:
+            self.games[1].finish(False)
         return events

@@ -14,6 +14,7 @@ class Timekeeper(TimedGame):
         self.attempted=False
         self.hit=False
         self.last_error=None
+        self.window=config.beat_window_seconds
 
     @property
     def target_time(self):
@@ -30,9 +31,9 @@ class Timekeeper(TimedGame):
             self.attempted=True
             error=abs(self.beat_age-self.target_time)
             self.last_error=error
-            if error<=self.config.beat_window_seconds:
+            if error<=self.window:
                 self.hit=True
-                perfect=error<=self.config.beat_window_seconds*.42
+                perfect=error<=self.window*.42
                 self.award(150 if perfect else 100,"PERFECT SYNC!" if perfect else "IN SYNC!")
                 self._event("beat_hit",absolute_game_timing_error_s=round(error,4))
             else:
@@ -42,6 +43,9 @@ class Timekeeper(TimedGame):
                 self.miss("RAISE A HAND WHEN THE RINGS MEET")
             self.beat_age-=self.period
             self.beat_number+=1
+            if self.endless:
+                self.period=self.pace(self.config.beat_period_seconds,1.8)
+                self.window=self.pace(self.config.beat_window_seconds,.20)
             self.attempted=self.hit=False
             self._event("beat_started",beat=self.beat_number)
         self.progress=min(1.,self.score/self.goal)
@@ -49,3 +53,6 @@ class Timekeeper(TimedGame):
     def on_pause(self):
         # Reacquisition cannot manufacture a fresh raising edge.
         self.was_raised=True
+
+    def on_start(self,actions):
+        self.was_raised=actions.raised

@@ -16,7 +16,7 @@ class DodgeOrDie(TimedGame):
         self.required=self.rng.choice(["LEFT","RIGHT","DUCK"])
         self.obstacle_age=0.
         self.obstacle_number+=1
-        self.travel_seconds=max(1.65,2.55-self.obstacle_number*.035)
+        self.travel_seconds=self.pace(2.8,1.6) if self.endless else max(1.65,2.55-self.obstacle_number*.035)
         self.dodged_held=0.
         self._event("obstacle_spawn",required=self.required,number=self.obstacle_number)
 
@@ -32,10 +32,11 @@ class DodgeOrDie(TimedGame):
             if self.dodged_held>=.13:
                 self.award(100+min(self.combo,10)*10,"CLEAN DODGE!")
             else:
-                self.lives-=1
+                if not self.endless:
+                    self.lives-=1
                 self.miss("HIT!  FIND THE SAFE GAP")
             self.spawn()
-        self.progress=self.elapsed/self.duration
+        self.progress=self.approach if self.endless else self.elapsed/self.duration
         if self.lives<=0:
             self.finish(False)
 

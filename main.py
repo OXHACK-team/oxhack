@@ -14,13 +14,17 @@ def main():
     parser.add_argument("--screenshot",help="Save the last rendered canvas to PNG")
     parser.add_argument("--data-path",help="Override SQLite path (useful for isolated tests)")
     parser.add_argument("--smoke-test",action="store_true",help="Verify all six games in Solo, AI, 2 Players and Party modes")
+    parser.add_argument("--survival-test",action="store_true",help="Verify endless survival with body inputs in all six games and four modes")
     args=parser.parse_args()
-    if args.headless or args.smoke_test:
+    if args.headless or args.smoke_test or args.survival_test:
         os.environ["SDL_VIDEODRIVER"]="dummy"
         os.environ["SDL_AUDIODRIVER"]="dummy"
     os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT","1")
     if args.smoke_test:
         from tests.smoke import run
+        return run()
+    if args.survival_test:
+        from tests.survival_smoke import run
         return run()
     from config import Config
     from game_manager import App

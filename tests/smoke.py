@@ -34,7 +34,7 @@ def run():
     folder.mkdir(parents=True,exist_ok=True)
     report={"status":"RUNNING","screenshots":[],"solo":{},"ai":{},"duo":{},"party":{}}
     with tempfile.TemporaryDirectory() as temp:
-        app=App(Config(),demo=True,windowed=True,data_path=Path(temp)/"acceptance.sqlite3",settings_path=Path(temp)/"config.json")
+        app=App(Config(endless=False),demo=True,windowed=True,data_path=Path(temp)/"acceptance.sqlite3",settings_path=Path(temp)/"config.json")
         app.rng.seed(2026)
         now=time.perf_counter()
         def tick(seconds,**controls):

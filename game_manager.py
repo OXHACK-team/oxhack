@@ -74,10 +74,12 @@ class App:
         self.previous_best=None
         self.personal_best=False
         self.record_saved=False
+        self.match_finished_at=None
         self.last_error=""
         self.diagnostics=False
         self.cursor_pos=None
         self.input_mode="mouse" if demo else "hand"
+        self.hand_return_started=None
         self.focus=-1
         self.menu_controller=None
         self.buttons=[]
@@ -88,12 +90,17 @@ class App:
         self.viewport=pygame.Rect(0,0,*self.window.get_size())
         self.transition_start=stamp
         self.transition_from=None
+        self.scaled_window=None
         self.screens=Screens(self)
         self._closed=False
 
     @property
     def mode(self):
         return "demo" if self.demo else "camera"
+
+    @property
+    def variant(self):
+        return "endless" if self.config.endless else "challenge"
 
     @property
     def card(self):
@@ -161,12 +168,17 @@ class App:
         self.change_scene("welcome",now)
 
     def start_match(self,now):
+        if not all(p.registered and p.valid for p in self.bank.players[:2 if self.session_mode=="duo" else 1]):
+            self.after_join="briefing"
+            self.change_scene("lobby" if self.dual_active else "welcome",now)
+            return
         names=[self.current_name,"Player 2"] if self.session_mode=="duo" else [self.current_name]
         self.match=Match(self.config,self.selected_game,self.session_mode,now,names,self.challenge_seed,self.config.ai_difficulty)
         self.game=self.match.games[0]
-        lookup=self.storage.best if self.card["metric"]=="time" else self.storage.best_score
-        self.previous_best=lookup(self.current_name,self.mode,self.selected_game,self.session_mode)
+        lookup=self.storage.best if self.game.metric=="time" else self.storage.best_score
+        self.previous_best=lookup(self.current_name,self.mode,self.selected_game,self.session_mode,self.variant)
         self.personal_best=self.record_saved=False
+        self.match_finished_at=None
         self.last_error=""
         self.result_id=None
         for detector in self.bank.movement:
@@ -194,6 +206,9 @@ class App:
 
     def go_back(self,now):
         if self.scene=="game" and self.match:
+            if self.match.finished:
+                self.change_scene("results",now)
+                return
             self.match.manual_pause=not self.match.manual_pause
             self.gesture.reset(now)
             return
@@ -222,6 +237,8 @@ class App:
             self.choose_mode(key[5:],now)
         elif key=="start":
             self.start_match(now)
+        elif key in ("variant_endless","variant_challenge"):
+            self.config.endless=key=="variant_endless"
         elif key=="again":
             self.party_index=0
             self.party_results=[]
@@ -252,6 +269,16 @@ class App:
         elif key in ("menu","all_games"):
             self.match=self.game=None
             self.change_scene("menu" if key=="menu" else "select",now)
+        elif key=="rejoin" and self.scene=="game" and self.match:
+            for i in range(self.match.human_count):
+                if not self.bank.players[i].valid and not self.match.games[i].finished:
+                    self.bank.players[i].request_rejoin()
+                    self.bank.movement[i].reset()
+        elif key=="end_run" and self.match:
+            for game in self.match.games:
+                game.finish(False)
+            self._save_results()
+            self.change_scene("results",now)
         elif key in ("calibrate","rejoin"):
             self.match=self.game=None
             self.bank.reset()
@@ -329,7 +356,7 @@ class App:
         for event in pygame.event.get() if events is None else events:
             if event.type==pygame.QUIT:
                 self.running=False
-            elif event.type==pygame.MOUSEMOTION and sum(abs(v) for v in event.rel)>2:
+            elif event.type==pygame.MOUSEMOTION and sum(abs(v) for v in event.rel)>2 and (self.demo or self.input_mode=="mouse"):
                 self.input_mode="mouse"
                 self.cursor_pos=self._mouse_position(event.pos)
             elif event.type==pygame.MOUSEBUTTONDOWN and event.button==1:
@@ -366,7 +393,18 @@ class App:
         elif self.tracker:
             self.tracker.track_hands=self.scene!="game"
             self.source_frame=self.tracker.latest()
+        registered_before=[p.registered for p in self.bank.players]
         actions=self.bank.update(self.source_frame,now,self.dual_active)
+        if any(p.registered and not registered_before[i] for i,p in enumerate(self.bank.players)):
+            # Rejoining always gives body control back. Neither mouse movement
+            # during setup nor a disconnected previous owner can strand the UI.
+            if not self.demo:
+                self.input_mode="hand"
+            if self.menu_controller is None or any(p.registered and not registered_before[i] and i==self.menu_controller for i,p in enumerate(self.bank.players)):
+                self.gesture.reset_owner(now)
+            for i,p in enumerate(self.bank.players):
+                if p.registered and not registered_before[i]:
+                    self.bank.movement[i].reset()
         self.frame=self.bank.frames[0]
         if self.scene in ("welcome","handoff") and self.player.registered and self.player.valid:
             self.audio.play("join")
@@ -383,19 +421,38 @@ class App:
                     continue
                 if i>0 and event["event"] in ("phase_green","phase_red","beat_cue"):
                     continue
+                if event["event"]=="red_violation" and self.game.endless:
+                    continue  # the accompanying shield miss already plays this cue
                 cue={"phase_green":"green","phase_red":"red","red_violation":"error","score":"select",
-                     "miss":"error","beat_cue":"tick","win":"win","lose":"lose"}.get(event["event"])
+                     "miss":"error","beat_cue":"tick","win":"win","lose":"lose","checkpoint":"win","level_up":"tick","shield_restored":"join"}.get(event["event"])
                 if cue:
                     self.audio.play(cue,(-.5 if i==0 else .5) if self.match.human_count==2 else 0.)
             if self.match.finished:
                 self._save_results()
-                self.change_scene("results",now)
+                if self.match_finished_at is None:
+                    self.match_finished_at=now
+                if now-self.match_finished_at>=1.8:
+                    self.change_scene("results",now)
         self.buttons=self.screens.buttons()
         available=[b for b in self.buttons if b.enabled]
         controller=next((i for i in range(2 if self.dual_active else 1) if self.bank.players[i].valid and self.bank.players[i].registered),None)
         if controller!=self.menu_controller:
             self.menu_controller=controller
-            self.gesture.reset(now)
+            self.gesture.reset_owner(now)
+            if controller is not None and not self.demo:
+                self.input_mode="hand"
+        # An intentional raised hand also recovers body navigation after an
+        # explicit mouse click. Casual mouse drift never disables hand input.
+        if not self.demo and controller is not None and self.input_mode!="hand" and (self.scene!="game" or self.match.paused):
+            if actions[controller].raised:
+                self.hand_return_started=now if self.hand_return_started is None else self.hand_return_started
+                if now-self.hand_return_started>=.65:
+                    self.input_mode="hand"
+                    self.gesture.reset_owner(now)
+            else:
+                self.hand_return_started=None
+        else:
+            self.hand_return_started=None
         if self.input_mode=="hand":
             self.cursor_pos=self.gesture.hand_position(self.bank.frames[controller],self.bank.players[controller].smoothed,dt) if controller is not None else None
         elif self.input_mode=="keyboard" and available:
@@ -404,7 +461,10 @@ class App:
             self.focus%=len(available)
             self.cursor_pos=available[self.focus].rect.center
         self.hovered=next((b.key for b in self.buttons if b.enabled and self.cursor_pos is not None and b.rect.collidepoint(self.cursor_pos)),None)
-        action=self.gesture.update(self.cursor_pos,self.buttons,now,enabled=self.input_mode=="hand" and controller is not None and (self.scene!="game" or self.match.paused))
+        gesture_buttons=self.buttons
+        if self.scene=="game" and not self.match.paused:
+            gesture_buttons=[b for b in self.buttons if b.key=="back" and not self.match.finished]
+        action=self.gesture.update(self.cursor_pos,gesture_buttons,now,enabled=self.input_mode=="hand" and controller is not None)
         if (clicked or keyboard_activate) and self.hovered:
             action=self.hovered
         elif keyboard_activate and self.scene in ("welcome","handoff","lobby") and self.demo:
@@ -424,6 +484,8 @@ class App:
             level=old+(1-math.exp(-dt/.085))*(float(self.hovered==button.key)-old)
             self.hover_levels[button.key]=level
             button.draw(self.canvas,level,now)
+        if self.scene not in ("welcome","handoff","lobby","connected","game") and not any(p.registered and p.valid for p in self.bank.players[:2 if self.dual_active else 1]):
+            self.screens.reconnect_overlay(now)
         if self.diagnostics:
             panel(self.canvas,(20,91,550,89),(5,15,26),CYAN,12)
             text(self.canvas,f"DRAW {self.fps:5.1f} FPS | INFER {self.source_frame.inference_ms:5.1f} ms",(34,100),17,CYAN,mono=True)
@@ -439,14 +501,21 @@ class App:
                 self.canvas.blit(self.transition_from,(0,0))
             else:
                 self.transition_from=None
-        if self.scene!="game" or not self.match or self.match.paused:
+        near_pause=self.cursor_pos is not None and any(b.key=="back" and b.rect.inflate(160,90).collidepoint(self.cursor_pos) for b in self.buttons)
+        if self.scene!="game" or not self.match or self.match.paused or (self.input_mode=="hand" and near_pause):
             cursor(self.canvas,self.cursor_pos,self.gesture.progress,ORANGE if self.input_mode!="hand" else CYAN)
         ww,wh=self.window.get_size()
         ratio=min(ww/W,wh/H)
         target=(max(1,round(W*ratio)),max(1,round(H*ratio)))
         self.viewport=pygame.Rect((ww-target[0])//2,(wh-target[1])//2,*target)
         self.window.fill(BG)
-        self.window.blit(pygame.transform.smoothscale(self.canvas,target),self.viewport)
+        if target==(W,H):
+            self.window.blit(self.canvas,self.viewport)
+        else:
+            if self.scaled_window is None or self.scaled_window.get_size()!=target:
+                self.scaled_window=pygame.Surface(target)
+            pygame.transform.smoothscale(self.canvas,target,self.scaled_window)
+            self.window.blit(self.scaled_window,self.viewport)
         pygame.display.flip()
 
     def run(self,max_frames=0,screenshot=None):

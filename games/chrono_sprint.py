@@ -13,8 +13,19 @@ class ChronoSprint(TimedGame):
     def advance(self,dt,actions):
         self.boost=int(self.elapsed)%8>=5 and actions.run>.65
         speed=.07*(1.6 if self.boost else 1.)
+        if self.endless:
+            self.running_energy(dt,actions,self.pace(3.8,8.5))
+            speed*=1.+self.difficulty*.35
         self.progress=min(1.,self.progress+actions.run*speed*dt)
-        self.score=int(self.progress*10000)
+        if not self.endless:
+            self.score=int(self.progress*10000)
         if self.progress>=1.-1e-8:
-            self.progress=1.
-            self.finish(True)
+            if self.endless:
+                self.laps+=1
+                self.progress=0.
+                self.energy=min(100.,self.energy+12.)
+                self.award(1000,"TIME PORTAL CLEARED / KEEP GOING!")
+                self._event("checkpoint",lap=self.laps)
+            else:
+                self.progress=1.
+                self.finish(True)

@@ -50,6 +50,7 @@ class Config:
     ai_difficulty: str = "normal"
     lean_threshold: float = .22
     crouch_threshold: float = .28
+    endless: bool = True
 
     @classmethod
     def load(cls, path=ROOT / "config.json"):

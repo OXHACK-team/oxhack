@@ -1,6 +1,7 @@
 """Synthetic landmarks exercise the SAME registration/motion path as the webcam."""
 import math
 from tracking_types import *
+from motion_input import HAND_REACH_WIDTH
 
 
 class SimulatedInput:
@@ -38,7 +39,7 @@ class SimulatedInput:
         if cursor is not None:
             shoulder=np.mean(p[[LS,RS],:2],axis=0)
             torso=float(np.mean(p[[LH,RH],1])-shoulder[1])
-            p[RW,:2]=[shoulder[0]+(cursor[0]/1440-.5)*torso*2.9,
+            p[RW,:2]=[shoulder[0]+(cursor[0]/1440-.5)*torso*HAND_REACH_WIDTH,
                       shoulder[1]-torso*.65+(cursor[1]/900)*torso*1.6]
             p[RE,:2]=(p[RS,:2]+p[RW,:2])/2
         return TrackingFrame(now, p, people=1, status="Demo player", aspect=4/3)

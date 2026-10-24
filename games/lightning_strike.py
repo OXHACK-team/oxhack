@@ -20,7 +20,7 @@ class LightningStrike(TimedGame):
         self.target=self.rng.choice(available)
         self.target_age=self.touch_held=0.
         self.target_number+=1
-        self.target_lifetime=max(1.35,2.2-self.combo*.04)
+        self.target_lifetime=self.pace(2.5,1.4) if self.endless else max(1.35,2.2-self.combo*.04)
         self._event("target_spawn",target=list(self.target),number=self.target_number)
 
     def advance(self,dt,actions):

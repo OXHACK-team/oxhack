@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 from tracking_types import LS, RS, LW, RW, LH, RH
 
+HAND_REACH_WIDTH = 2.5  # torso lengths; includes UI corners inside the camera
+
 
 @dataclass(frozen=True)
 class MotionInput:
@@ -37,7 +39,7 @@ def from_player(player, movement, aspect=4/3):
     scale = max(.08, player.body_scale)
     torso = max(.1, old_hip[1]-neutral_shoulder[1])
     def hand(i):
-        return (float(np.clip(.5+(p[i,0]-shoulder[0])*(aspect/(4/3))/(torso*2.9),0,1)),
+        return (float(np.clip(.5+(p[i,0]-shoulder[0])*(aspect/(4/3))/(torso*HAND_REACH_WIDTH),0,1)),
                 float(np.clip((p[i,1]-(shoulder[1]-torso*.65))/(torso*1.6),0,1)))
     return MotionInput(float(movement.run_score), float(movement.motion_score),
         float((shoulder[0]-neutral_shoulder[0])*aspect/scale*player.config.sensitivity),
