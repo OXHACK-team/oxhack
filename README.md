@@ -401,4 +401,4 @@ requested timestamp was unavailable in this environment.
 - [Abdelrahman Soliman](https://github.com/Abdelrahman-Eyad)
   — University of Essex, BSc Artificial Intelligence
 - [Mphiwa Tema Mantswe](https://github.com/nothingwastakenSoCallMeT) - University of Manchester, MEng Mechatronic Engineering
-- [Kesego Bogosi] (https://github.com/Kesego-Bogosi) -University of Manchester,   BSc Computer Science
+- [Kesego Bogosi](https://github.com/Kesego-Bogosi) -University of Manchester,   BSc Computer Science
