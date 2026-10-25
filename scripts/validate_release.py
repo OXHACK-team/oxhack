@@ -23,6 +23,7 @@ REQUIRED=(
     "pose_tracker.py","progression.py","simulated_input.py","sprite_rig.py",
     "storage.py","tracking_types.py","requirements.txt","README.md","START_HERE.md",
     "setup.ps1","run.ps1","Setup CHRONO ARENA.cmd","Launch CHRONO ARENA.cmd","Launch Demo.cmd",
+    "Setup Mac.command","Launch Mac.command","Launch Demo Mac.command",
     "games/__init__.py","games/timed.py","games/red_light_green_light.py",
     "games/lightning_strike.py","games/dodge_or_die.py","games/chrono_sprint.py",
     "games/timekeeper.py","games/echo_shift.py","ui/__init__.py","ui/art.py",

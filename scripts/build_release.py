@@ -14,8 +14,8 @@ from config import Config
 from validate_release import validate
 
 DIRECTORIES=("games","ui","scripts","tests","assets","models")
-EXCLUDED={".venv","venv",".git","__pycache__","data","artifacts","release","node_modules"}
-ROOT_SUFFIXES={".py",".ps1",".cmd",".md"}
+EXCLUDED={".venv",".venv-mac","venv",".git","__pycache__","data","artifacts","release","node_modules"}
+ROOT_SUFFIXES={".py",".ps1",".cmd",".command",".md"}
 
 
 def release_files(root=ROOT):
@@ -51,7 +51,11 @@ def build(output,release_date,root=ROOT):
         for path in release_files(root):
             relative=path.relative_to(root).as_posix()
             payload=defaults if relative=="config.json" else path.read_bytes()
-            archive.writestr("oxhack/"+relative,payload)
+            info=zipfile.ZipInfo("oxhack/"+relative)
+            info.create_system=3
+            info.external_attr=(0o100755 if path.suffix==".command" else 0o100644)<<16
+            info.compress_type=zipfile.ZIP_DEFLATED
+            archive.writestr(info,payload)
             entries.append({"path":relative,"bytes":len(payload),"sha256":hashlib.sha256(payload).hexdigest()})
         manifest={"project":"CHRONO ARENA","release_date":release_date,
                   "python":"3.11 (64-bit)","files":entries,

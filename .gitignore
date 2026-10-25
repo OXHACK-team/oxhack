@@ -6,3 +6,4 @@ artifacts/
 release/
 models/*.task
 models/*.part
+.venv-mac/

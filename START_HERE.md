@@ -20,6 +20,30 @@ try the games with a keyboard and mouse. The existing environment can be used.
 Both tracking models and all artwork are included. After setup the game works
 offline. A copied `.venv` from someone else's computer is not needed.
 
+## On a Mac (Apple Silicon or Intel)
+
+Requires macOS 13 (Ventura) or later and **Python 3.11** from
+[python.org](https://www.python.org/downloads/release/python-3119/).
+Extract the latest ZIP. Open Terminal, type `cd `, drag the extracted **oxhack**
+folder into Terminal, then press Return. Run:
+
+```bash
+bash "Setup Mac.command"
+bash "Launch Mac.command"
+```
+
+Setup needs internet once. For keyboard play use `bash "Launch Demo Mac.command"`.
+After setup you can also double-click the Mac launch files. If Finder blocks
+one, run it from Terminal using the commands above.
+Allow camera access for Terminal/Python when asked. If you denied it, enable
+the launching app under **System Settings > Privacy & Security > Camera**, then
+quit and reopen that app. F2 switches to demo without a camera.
+Mac launchers start windowed; F11 toggles fullscreen (Fn+F11 on some keyboards).
+The separate `.venv-mac` environment prevents a copied Windows environment
+from breaking installation. Intel uses MediaPipe 0.10.21; Apple Silicon uses
+0.10.35, based on available official wheels. Mac hardware has not been tested
+on this Windows development machine.
+
 ## Your first minute
 
 - **Webcam:** keep your head, hands and feet in view. Stand still with arms down,

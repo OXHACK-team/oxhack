@@ -8,6 +8,12 @@ your timing, movement, memory and stillness.
 
 ## Run now
 
+**Mac:** install Python 3.11, open Terminal in the extracted folder, run
+`bash "Setup Mac.command"`, then `bash "Launch Mac.command"`.
+For keyboard play: `bash "Launch Demo Mac.command"`.
+Apple Silicon and Intel have separate compatible dependency selections.
+See [START_HERE.md](START_HERE.md) for camera permissions and setup details.
+
 Start with **[START_HERE.md](START_HERE.md)**. On the team's laptop, the existing
 environment is ready. On a new Windows computer, extract the ZIP, install
 64-bit Python 3.11, then double-click **Setup CHRONO ARENA.cmd** once. Both
