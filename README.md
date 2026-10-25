@@ -391,6 +391,11 @@ The vision implementation follows Google's official
 and [Hand Landmarker guide](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/python).
 Reference fixtures come from Google's
 [pose sample](https://storage.googleapis.com/mediapipe-assets/pose.jpg) and
+
+## Contributors
+
+- [Abdelrahman Soliman](https://github.com/Abdelrahman-Eyad)
+  — University of Essex, BSc Artificial Intelligence
 [Hand Landmarker notebook](https://github.com/google-ai-edge/mediapipe-samples/blob/main/examples/hand_landmarker/python/hand_landmarker.ipynb).
 The user-provided [Kinect Sports video](https://www.youtube.com/watch?v=-AuBrN5up8k&t=68s)
 set the presentation direction. Its metadata was retrieved; playback at the
