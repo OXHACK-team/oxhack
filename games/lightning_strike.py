@@ -28,7 +28,7 @@ class LightningStrike(TimedGame):
         near=min(math.dist(hand,self.target) for hand in (actions.left_hand,actions.right_hand)) < self.config.target_radius
         self.touch_held=self.touch_held+dt if near else 0.
         if self.touch_held>=self.config.target_hold_seconds:
-            self.award(100+min(100,self.combo*10),"TIME CHAIN!" if self.combo>2 else "CHARGED!")
+            self.award(100+min(100,self.combo*10),"TIME CHAIN!" if self.combo>2 else "CHARGED!",target=list(self.target))
             self.spawn()
         elif self.target_age>=self.target_lifetime:
             self.miss("TARGET EXPIRED")
@@ -36,4 +36,4 @@ class LightningStrike(TimedGame):
         self.progress=min(1.,self.score/self.goal)
 
     def on_pause(self):
-        self.touch_held=0.
+        pass  # preserve a charge already earned before the target clock froze

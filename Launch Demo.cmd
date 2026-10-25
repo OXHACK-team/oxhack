@@ -1,7 +1,9 @@
 @echo off
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
-    echo Run setup.ps1 first. Python 3.11 is required.
+    echo First-time setup is needed in this folder.
+    echo Double-click "Setup CHRONO ARENA.cmd", then launch again.
+    echo Python 3.11 64-bit is required.
     pause
     exit /b 1
 )

@@ -16,6 +16,7 @@ class MotionInput:
     right_up: bool = False
     left_hand: tuple = (.25, .9)
     right_hand: tuple = (.75, .9)
+    time_power: bool = False
 
     @property
     def raised(self):
@@ -44,4 +45,7 @@ def from_player(player, movement, aspect=4/3):
     return MotionInput(float(movement.run_score), float(movement.motion_score),
         float((shoulder[0]-neutral_shoulder[0])*aspect/scale*player.config.sensitivity),
         bool((hip[1]-old_hip[1])/scale*player.config.sensitivity > player.config.crouch_threshold),
-        bool(p[LW,1]<shoulder[1]-.1*torso), bool(p[RW,1]<shoulder[1]-.1*torso), hand(LW), hand(RW))
+        bool(p[LW,1]<shoulder[1]-.1*torso), bool(p[RW,1]<shoulder[1]-.1*torso), hand(LW), hand(RW),
+        bool(np.linalg.norm((p[LW,:2]-p[RS,:2])*[aspect,1])<scale*.65 and
+             np.linalg.norm((p[RW,:2]-p[LS,:2])*[aspect,1])<scale*.65 and
+             (p[LW,0]-p[RW,0])*(p[LS,0]-p[RS,0])<0))

@@ -22,13 +22,18 @@ class Button:
             fill = mix(color,tuple(min(255,c+22) for c in color)) if self.enabled else EDGE
         panel(surface,self.rect.move(0,5),(4,14,25),None,17)
         panel(surface, self.rect, fill, color if self.primary else mix(EDGE,color), 17)
-        ink = BG if self.primary else WHITE if self.enabled else MUTED
+        if self.primary and self.enabled:
+            highlight=tuple(min(255,c+32) for c in fill)
+            pygame.draw.line(surface,highlight,(self.rect.x+19,self.rect.y+2),(self.rect.right-19,self.rect.y+2),1)
+        if amount>.03:
+            pygame.draw.rect(surface,color,(self.rect.x+2,self.rect.y+14,3,max(4,self.rect.height-28)),border_radius=2)
+        ink = MUTED if not self.enabled else BG if self.primary else WHITE
         if self.subtitle:
             fit_text(surface, self.label, (self.rect.x+26,self.rect.y+15),self.rect.width-82, 26, ink, True)
             text(surface, self.subtitle, (self.rect.x+26,self.rect.y+49), 16, BG if self.primary else MUTED)
         else:
             fit_text(surface, self.label, (self.rect.x+24, self.rect.centery-14),self.rect.width-72, 25, ink, True)
-        x, y = self.rect.right-30, self.rect.centery
+        x, y = self.rect.right-30+round(amount*4), self.rect.centery
         if self.enabled:
             pygame.draw.lines(surface, ink, False, [(x-6,y-6),(x,y),(x-6,y+6)], 2)
 
@@ -51,9 +56,14 @@ class GameCard(Button):
         panel(surface,rect.move(0,8),(4,12,22),None,20)
         surface.blit(self.image,rect)
         pygame.draw.rect(surface,self.color if amount>.1 else (72,89,107),rect,round(1+amount*2),border_radius=20)
+        pygame.draw.line(surface,self.color,(rect.x+22,rect.y+1),(rect.x+86+round(amount*110),rect.y+1),3)
         pill(surface,self.card["tag"],(rect.x+19,rect.y+16),self.color,12)
+        panel(surface,(rect.right-56,rect.y+16,36,32),(9,24,39),self.color,9)
+        text(surface,f"{self.card['art']+1:02d}",(rect.right-38,rect.y+32),14,self.color,True,True,mono=True)
         fit_text(surface,self.label,(rect.x+21,rect.bottom-74),rect.width-78,28,WHITE,True)
         text(surface,self.card["control"],(rect.x+22,rect.bottom-33),13,MUTED,mono=True)
+        if amount>.01:
+            pygame.draw.line(surface,self.color,(rect.x+22,rect.bottom-9),(rect.x+22+round((rect.width-44)*amount),rect.bottom-9),2)
         x,y=rect.right-36,rect.bottom-51
         pygame.draw.circle(surface,self.color,(x,y),17)
         pygame.draw.polygon(surface,BG,[(x-4,y-7),(x-4,y+7),(x+6,y)])
@@ -69,6 +79,7 @@ class ModeCard(Button):
         fill=tuple(round(a+(b-a)*amount) for a,b in zip(PANEL,(30,57,70)))
         panel(surface,self.rect.move(0,6),(4,14,26),None,22)
         panel(surface,self.rect,fill,self.color if amount>.1 else EDGE,22)
+        pygame.draw.line(surface,self.color,(self.rect.x+23,self.rect.y+1),(self.rect.x+100,self.rect.y+1),3)
         cx,cy=self.rect.x+65,self.rect.centery
         ring(surface,(cx,cy),33,.78,self.color,2)
         if self.number==0:

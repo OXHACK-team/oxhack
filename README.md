@@ -4,12 +4,14 @@ Six motion-controlled sports challenges for **OxHack 2026 / TIME**. A webcam
 becomes the controller: raise a hand to join, choose a game, and compete with
 your timing, movement, memory and stillness.
 
-![The six-game gallery](artifacts/v2/05-six-games.png)
+![The motion arena](assets/previews/home.png)
 
 ## Run now
 
-The Python environment, models and original artwork are already installed in
-this workspace. **No reinstall is needed to run this upgrade.**
+Start with **[START_HERE.md](START_HERE.md)**. On the team's laptop, the existing
+environment is ready. On a new Windows computer, extract the ZIP, install
+64-bit Python 3.11, then double-click **Setup CHRONO ARENA.cmd** once. Both
+tracking models and the artwork are bundled; setup needs internet for packages.
 
 - Double-click **Launch CHRONO ARENA.cmd** for fullscreen webcam play.
 - Double-click **Launch Demo.cmd** for a windowed keyboard/mouse simulation.
@@ -31,6 +33,45 @@ selection to rearm. Mouse clicks and arrows/Enter also work.
 **USE HAND / USE MOUSE** is always in the top right. Settings lets you switch
 between the webcam and keyboard demo without restarting. The bottom of each
 game shows its relevant controls. Escape goes back or pauses a running match.
+
+**QUICK PLAY** takes you straight to the Dodge or Die briefing in endless solo.
+The gallery still offers all six games and four player modes.
+
+**PRACTICE MOVES** on every briefing gives you a demonstration avatar and live
+movement feedback before a run. Practice has no score, penalties, records or
+XP. It is optional, works for one or two people, and you can start whenever ready.
+The mirrored camera preview highlights visible joints and gives specific
+head/feet/hands and lane-position guidance. Switching away from the game or
+minimizing its window pauses an active match; returning never resumes it by itself.
+
+## Presentation and gameplay upgrade
+
+Each sport now has its own clockwork arena, raised track geometry, solid
+obstacles or dimensional clock portal. Hits generate bounded sparks, clock
+shockwaves and score pops. Clean dodges, rhythm hits and cleared portals have
+different feedback. The soundtrack and 17 layered sound cues are synthesized
+locally; no audio downloads or network services are needed.
+
+**TIME SHIELD:** in endless survival, cross your wrists onto the opposite
+shoulders and hold for 0.65 seconds. You can also hold **R** for Player 1 or
+**F** for Player 2. One charge protects against the next mistake for five active
+seconds. It blocks damage without awarding a fake hit or changing anyone else's
+clock. Every run starts with one charge; a 12-hit chain earns another, up to two.
+Release your arms/key before activating again. Timed challenge rules stay the
+same. NOVA can use its own charge defensively.
+
+Saved runs now earn local XP, player levels and rank titles. Camera and demo
+progression are separate. Idle runs and banking before eight active seconds
+earn no XP. Results show actual portals/hits, best chains and a performance
+medal. Endless medals unlock at **20 / 45 / 90 / 180 seconds** with a positive
+score; the next milestone is displayed clearly.
+
+Movement and menu filters adapt to deliberate motion while smoothing small
+noise. **Reduced Motion** in Settings disables decorative trails, flying
+particles, pulses, score count-in and scene fades; gameplay timing and feedback
+labels remain available.
+
+![Time Shield in the two-player arena](assets/previews/time-shield.png)
 
 ## Six playable games
 
@@ -56,7 +97,7 @@ Rendering stalls do not simulate unseen extra obstacles or drain seconds of
 energy. Tracking loss freezes every active competitor's clock and difficulty.
 Survival records are kept separate from timed records.
 
-![Two-player endless survival](artifacts/survival/duo-sprint.png)
+![Two-player endless survival](assets/previews/duo-sprint.png)
 
 | Game | What you do | How TIME matters | Default challenge / record |
 | --- | --- | --- | --- |
@@ -129,6 +170,7 @@ after everyone has played.
 | Duck | Crouch | C | S |
 | Raise one hand / beat | Raise a hand | H | T |
 | Both hands up / Echo | Raise both hands | U | W |
+| Time Shield / endless | Cross arms and hold 0.65s, or R / F | Hold R | Hold F |
 | Lightning hand aiming | Reach with either hand | Move mouse over the playfield | W/A/S/D move a hand cursor |
 
 Global: **Escape** back/pause, **P** pause/resume, **F1** diagnostics,
@@ -258,6 +300,8 @@ Each entry includes UTC creation time, player, camera/demo source, game, match
 mode, survival/timed variant, challenge seed, outcome, score, elapsed/remaining time, violations and
 timestamped event JSON. Events cover phases, targets, misses, scoring, beats,
 echo sequences, tracking pauses/resumes and outcomes.
+Each new result also stores earned XP. Existing rows are preserved and start
+with zero XP; player progression totals come from that player's saved results.
 
 Records and personal bests are separated by game, source, match mode and
 survival/timed variant. Existing records migrate as timed challenges. Time
@@ -308,16 +352,16 @@ Verified in this Windows workspace on **24 October 2026**:
 
 | Check | Observed result |
 | --- | --- |
-| Unit tests | 66 pass |
+| Unit tests | 122 pass |
 | Full body-input acceptance | All six games × Solo, AI, 2 Players and Party pass |
 | Endless survival acceptance | All 24 combinations pass; 36 human runs continue past 75s |
 | Join/reconnect regressions | Body-only late join, in-run recovery and P2 menu takeover pass |
 | Party handoffs | 2- and 4-player sessions pass |
 | Result integrity | One record per human finish; old schema migration passes |
-| Physical webcam | 640×480 frames, 90 distinct inference frames in the latest 3s probe |
+| Physical webcam | Warmed probe: 90 captured and inferred frames in 3s, 24.45ms median inference; workers stop cleanly |
 | Multi-pose reference fixture | Two bodies detected |
 | Native solo render + synthetic input | ~6.5ms median, ~146 uncapped FPS |
-| Native two-player render + synthetic input | ~5.9ms median, ~174 uncapped FPS in the latest local run |
+| Native two-player render + synthetic input | Sprint: 8.71ms median / 13.72ms p95; sustained Lightning effects: 8.29ms / 13.73ms |
 | Resource cleanup | Camera and inference workers stop cleanly |
 
 These are local measurements; the rendering benchmarks measure simulated input
@@ -336,6 +380,11 @@ been exercised, while the complete movement/gameplay acceptance is synthetic.
 6. End on results: completion/score, personal best and the local standings.
 
 ## References
+
+The optional live-movement practice and tracking viewer take design cues from
+Microsoft's [Kinect interaction guidelines](https://download.microsoft.com/download/6/7/6/676611b4-1982-47a4-a42e-4cf84e1095a8/kinecthig.2.0.pdf)
+and [Kinect Sports manual](https://download.microsoft.com/download/F/9/9/F99AB8F0-5191-4EDD-B312-7A9B9E4784FA/KinectSports_MNL_XD.pdf).
+The demonstrations, artwork, audio and implementation in this project are its own.
 
 The vision implementation follows Google's official
 [Pose Landmarker guide](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python)

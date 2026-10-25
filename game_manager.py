@@ -3,6 +3,7 @@ import math
 import random
 import sqlite3
 import time
+from dataclasses import replace
 from pathlib import Path
 import numpy as np
 import pygame
@@ -15,12 +16,16 @@ from gesture_controller import GestureController
 from match import Match,ranking_key
 from player_bank import PlayerBank
 from pose_tracker import PoseTracker
+from progression import xp_for
 from simulated_input import SimulatedInput
 from storage import Storage
 from tracking_types import TrackingFrame,neutral_pose,LS,RS,LH,RH
 from ui.art import Art
 from ui.components import cursor
+from ui.effects import Effects
+from ui.coach import PracticeCoach
 from ui.screens import Screens
+from ui.worlds import playfields
 from ui.theme import *
 
 
@@ -30,6 +35,7 @@ class App:
         self.settings_path=Path(settings_path) if settings_path else ROOT/"config.json"
         pygame.mixer.pre_init(44100,-16,2,512)
         pygame.init()
+        font.cache_clear()  # pygame.quit invalidates fonts cached by a previous App
         self.fullscreen=config.fullscreen and not windowed
         self.window=pygame.display.set_mode((0,0) if self.fullscreen else (1152,720),pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE)
         pygame.display.set_caption("CHRONO ARENA | Own the next second")
@@ -39,7 +45,11 @@ class App:
         self.art=Art()
         self.avatar=Avatar()
         self.audio=Audio(config)
+        self.effects=Effects(config)
         self.storage=Storage(data_path)
+        self.profile=self.storage.profile(config.player_name,self.mode)
+        self.last_run_xp=0
+        self.result_profiles={}
         self.bank=PlayerBank(config)
         self.player=self.bank.players[0]
         self.movement=self.bank.movement[0]
@@ -69,6 +79,7 @@ class App:
         self.challenge_seed=2026
         self.match=None
         self.game=None
+        self.practice=None
         self.rng=random.Random()
         self.result_id=None
         self.previous_best=None
@@ -113,7 +124,7 @@ class App:
     def change_scene(self,scene,now):
         if scene==self.scene:
             return
-        self.transition_from=self.canvas.copy()
+        self.transition_from=None if self.config.reduced_motion else self.canvas.copy()
         self.transition_start=now
         self.scene,self.scene_started=scene,now
         self.gesture.reset(now)
@@ -128,9 +139,11 @@ class App:
             self.camera.close()
             self.camera=None
         self.demo=True
+        self.profile=self.storage.profile(self.config.player_name,self.mode)
         self.dual_active=False
         self.bank.reset()
         self.match=self.game=None
+        self.practice=None
         self.after_join="menu"
         self.input_mode="mouse"
         self.change_scene("welcome",now)
@@ -155,9 +168,11 @@ class App:
 
     def set_camera(self,now):
         self.demo=False
+        self.profile=self.storage.profile(self.config.player_name,self.mode)
         self.dual_active=False
         self.bank.reset()
         self.match=self.game=None
+        self.practice=None
         self.after_join="menu"
         self.input_mode="hand"
         self.source_frame=TrackingFrame(now,status="Opening camera...")
@@ -174,10 +189,14 @@ class App:
             return
         names=[self.current_name,"Player 2"] if self.session_mode=="duo" else [self.current_name]
         self.match=Match(self.config,self.selected_game,self.session_mode,now,names,self.challenge_seed,self.config.ai_difficulty)
+        self.practice=None
+        self.effects.clear()
+        self.audio.play("countdown")
         self.game=self.match.games[0]
         lookup=self.storage.best if self.game.metric=="time" else self.storage.best_score
         self.previous_best=lookup(self.current_name,self.mode,self.selected_game,self.session_mode,self.variant)
         self.personal_best=self.record_saved=False
+        self.last_run_xp=0
         self.match_finished_at=None
         self.last_error=""
         self.result_id=None
@@ -186,6 +205,7 @@ class App:
         self.change_scene("game",now)
 
     def choose_mode(self,mode,now):
+        self.practice=None
         self.session_mode=mode
         self.party_index=0
         self.party_results=[]
@@ -213,7 +233,7 @@ class App:
             self.gesture.reset(now)
             return
         target={"select":"menu","mode":"select","briefing":"mode","settings":"menu","how":"menu",
-                "results":"select","lobby":"mode","handoff":"select","connected":"menu"}.get(self.scene)
+                "results":"select","lobby":"mode","handoff":"select","connected":"menu","practice":"briefing"}.get(self.scene)
         if target:
             self.change_scene(target,now)
         elif self.scene=="welcome":
@@ -230,6 +250,10 @@ class App:
             self.gesture.reset(now)
         elif key=="play":
             self.change_scene("select",now)
+        elif key=="quick_play":
+            self.selected_game="dodge"
+            self.config.endless=True
+            self.choose_mode("solo",now)
         elif key in GAMES:
             self.selected_game=key
             self.change_scene("mode",now)
@@ -237,6 +261,10 @@ class App:
             self.choose_mode(key[5:],now)
         elif key=="start":
             self.start_match(now)
+        elif key=="practice" and self.scene=="briefing":
+            self.match=self.game=None
+            self.practice=PracticeCoach(self.selected_game,self.config,2 if self.session_mode=="duo" else 1)
+            self.change_scene("practice",now)
         elif key in ("variant_endless","variant_challenge"):
             self.config.endless=key=="variant_endless"
         elif key=="again":
@@ -287,8 +315,8 @@ class App:
         elif key in ("less","more"):
             self.config.sensitivity=round(max(.4,min(2.,self.config.sensitivity+(-.2 if key=="less" else .2))),1)
             self._save_settings()
-        elif key in ("sound","preview"):
-            field="sound" if key=="sound" else "show_preview"
+        elif key in ("sound","preview","reduced_motion"):
+            field="show_preview" if key=="preview" else key
             setattr(self.config,field,not getattr(self.config,field))
             self._save_settings()
         elif key=="exit":
@@ -307,20 +335,24 @@ class App:
 
     def _demo_frame(self,now,dt,keys,controls):
         specs=[dict(raise_hand=keys[pygame.K_h],running=keys[pygame.K_SPACE],crouch=keys[pygame.K_c],
-                    lean=float(keys[pygame.K_RIGHT])-float(keys[pygame.K_LEFT]),lost=keys[pygame.K_l],both_up=keys[pygame.K_u]),
+                    lean=float(keys[pygame.K_RIGHT])-float(keys[pygame.K_LEFT]),lost=keys[pygame.K_l],both_up=keys[pygame.K_u],time_power=keys[pygame.K_r]),
                dict(raise_hand=keys[pygame.K_t],running=keys[pygame.K_LSHIFT],crouch=keys[pygame.K_s],
-                    lean=float(keys[pygame.K_d])-float(keys[pygame.K_a]),lost=False,both_up=keys[pygame.K_w])]
+                    lean=float(keys[pygame.K_d])-float(keys[pygame.K_a]),lost=False,both_up=keys[pygame.K_w],time_power=keys[pygame.K_f])]
         specs[0].update({k:v for k,v in controls.items() if k!="p2"})
         specs[1].update(controls.get("p2",{}))
-        if self.scene=="game" and self.selected_game=="lightning" and self.dual_active and "cursor" not in controls.get("p2",{}):
+        if self.scene in ("game","practice") and self.selected_game=="lightning" and self.dual_active and "cursor" not in controls.get("p2",{}):
             delta=np.array([float(keys[pygame.K_d])-float(keys[pygame.K_a]),float(keys[pygame.K_s])-float(keys[pygame.K_w])])
-            self.demo_hands[1]=np.clip(self.demo_hands[1]+delta*dt*.7,.02,.98)
+            self.demo_hands[1]=np.clip(self.demo_hands[1]+delta*dt*.7,.04,.96)
             specs[1]["cursor"]=self.demo_hands[1]*[W,H]
-        if self.scene=="game" and self.selected_game=="lightning" and self.input_mode=="mouse" and "cursor" not in controls:
+        if self.scene in ("game","practice") and self.selected_game=="lightning" and self.input_mode=="mouse" and "cursor" not in controls:
             logical=self._mouse_position(pygame.mouse.get_pos())
             if logical:
                 area=self.screens.hand_area(0)
-                specs[0]["cursor"]=((logical[0]-area.x)/area.width*W,(logical[1]-area.y)/area.height*H)
+                if area.collidepoint(logical):
+                    self.demo_hands[0]=np.clip([(logical[0]-area.x)/area.width,(logical[1]-area.y)/area.height],.04,.96)
+            # Navigating outside the arena must not move a synthetic wrist
+            # outside the camera and disconnect the demo player.
+            specs[0]["cursor"]=self.demo_hands[0]*[W,H]
         frames=[self.sims[i].sample(now,dt,**specs[i]) for i in range(2 if self.dual_active else 1)]
         if not self.dual_active:
             return frames[0]
@@ -345,17 +377,26 @@ class App:
                 ident=self.storage.save(self.match.names[i],self.mode,self.match.games[i],self.session_mode,self.challenge_seed)
                 if i==0:
                     self.result_id=ident
+                self.result_profiles[self.match.names[i]]=self.storage.profile(self.match.names[i],self.mode)
         except (OSError,sqlite3.Error) as exc:
             self.last_error=f"Result could not be saved: {exc}"
+        else:
+            self.last_run_xp=xp_for(self.game)
+            self.profile=self.storage.profile(self.config.player_name,self.mode)
         if self.session_mode=="party":
             self.party_results.append((self.current_name,self.game))
 
     def step(self,dt,now,events=None,controls=None):
         controls=controls or {}
+        if self.scene!="game" or not self.match or not self.match.paused:
+            self.effects.update(dt)
         clicked=keyboard_activate=False
         for event in pygame.event.get() if events is None else events:
             if event.type==pygame.QUIT:
                 self.running=False
+            elif event.type in (pygame.WINDOWFOCUSLOST,pygame.WINDOWMINIMIZED) and self.scene=="game" and self.match and not self.match.finished:
+                self.match.manual_pause=True
+                self.gesture.reset(now)
             elif event.type==pygame.MOUSEMOTION and sum(abs(v) for v in event.rel)>2 and (self.demo or self.input_mode=="mouse"):
                 self.input_mode="mouse"
                 self.cursor_pos=self._mouse_position(event.pos)
@@ -395,6 +436,10 @@ class App:
             self.source_frame=self.tracker.latest()
         registered_before=[p.registered for p in self.bank.players]
         actions=self.bank.update(self.source_frame,now,self.dual_active)
+        if not self.demo and self.scene=="game":
+            for i,key in enumerate((pygame.K_r,pygame.K_f)):
+                if i<len(actions) and keys[key] and self.bank.players[i].registered and self.bank.players[i].valid:
+                    actions[i]=replace(actions[i],time_power=True)
         if any(p.registered and not registered_before[i] for i,p in enumerate(self.bank.players)):
             # Rejoining always gives body control back. Neither mouse movement
             # during setup nor a disconnected previous owner can strand the UI.
@@ -414,19 +459,33 @@ class App:
             self.change_scene("briefing",now)
         elif self.scene=="connected" and now-self.scene_started>1.:
             self.change_scene(self.after_join,now)
+        if self.scene=="practice" and self.practice:
+            before=[(p.step_index,p.complete) for p in self.practice.players]
+            validity=[p.registered and p.valid for p in self.bank.players[:len(self.practice.players)]]
+            self.practice.update(dt,actions,validity)
+            if before!=[(p.step_index,p.complete) for p in self.practice.players]:
+                self.audio.play("join" if self.practice.complete else "select")
         if self.scene=="game" and self.match:
             validity=[p.valid and p.registered for p in self.bank.players[:self.match.human_count]]
+            previous_countdown=math.ceil(max(g.countdown for g in self.match.games))
+            fields=playfields(len(self.match.games))
             for i,event in self.match.update(now,actions,validity):
+                self.effects.emit(i,event,self.match.games[i],now,fields[i])
                 if i>=self.match.human_count:
                     continue
-                if i>0 and event["event"] in ("phase_green","phase_red","beat_cue"):
+                if i>0 and event["event"] in ("phase_green","phase_red","beat_cue","round_started"):
                     continue
                 if event["event"]=="red_violation" and self.game.endless:
                     continue  # the accompanying shield miss already plays this cue
-                cue={"phase_green":"green","phase_red":"red","red_violation":"error","score":"select",
-                     "miss":"error","beat_cue":"tick","win":"win","lose":"lose","checkpoint":"win","level_up":"tick","shield_restored":"join"}.get(event["event"])
+                cue={"phase_green":"green","phase_red":"red","red_violation":"hit","score":"score",
+                     "miss":"hit","beat_cue":"tick","win":"win","lose":"lose","checkpoint":"checkpoint",
+                     "level_up":"level_up","shield_restored":"shield","time_power":"time_power","time_block":"time_block",
+                     "time_power_ready":"time_power_ready","round_started":"join"}.get(event["event"])
                 if cue:
                     self.audio.play(cue,(-.5 if i==0 else .5) if self.match.human_count==2 else 0.)
+            next_countdown=math.ceil(max(g.countdown for g in self.match.games))
+            if 0<next_countdown<previous_countdown:
+                self.audio.play("countdown")
             if self.match.finished:
                 self._save_results()
                 if self.match_finished_at is None:
@@ -479,6 +538,8 @@ class App:
         dt=1/60 if self.last_render is None else max(0.,now-self.last_render)
         self.last_render=now
         self.screens.draw(now)
+        if self.scene=="game" and self.match and not self.match.paused:
+            self.effects.draw(self.canvas,now)
         for button in self.buttons:
             old=self.hover_levels.get(button.key,0.)
             level=old+(1-math.exp(-dt/.085))*(float(self.hovered==button.key)-old)

@@ -30,6 +30,11 @@ class AIController:
         return game.elapsed-self.noticed
 
     def act(self,game):
+        if game.endless and game.time_power_charges>0 and not game.time_power_active and game.lives==1 and not game.finished and game.countdown==0:
+            return MotionInput(time_power=True,motion=1.)
+        return self.decide(game)
+
+    def decide(self,game):
         key=game.game_id
         if key=="red_green":
             self.notice(game,(game.phase,game.phase_number))

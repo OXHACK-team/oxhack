@@ -34,7 +34,36 @@ class TimedGame:
         self.energy = 100.
         self.distance_score = 0.
         self.level_until = 0.
+        self.time_power_charges=1 if self.endless else 0
+        self.time_power_until=0.
+        self.time_power_progress=0.
+        self._power_held=0.
+        self._power_latched=False
+        self.blocks=0
         self._event("round_created", now)
+
+    @property
+    def time_power_active(self):
+        return self.endless and self.elapsed<self.time_power_until
+
+    def update_power(self,dt,actions):
+        if not actions.time_power:
+            self._power_held=self.time_power_progress=0.
+            self._power_latched=False
+            return
+        if self._power_latched or self.time_power_active or self.time_power_charges==0:
+            self.time_power_progress=0.
+            return
+        self._power_held+=dt
+        self.time_power_progress=min(1.,self._power_held/.65)
+        if self.time_power_progress>=1.-1e-8:
+            self.time_power_charges-=1
+            self.time_power_until=self.elapsed+5.
+            self._power_latched=True
+            self.time_power_progress=0.
+            self.feedback,self.feedback_until="TIME SHIELD / NEXT HIT BLOCKED",self.elapsed+1.2
+            self.feedback_kind="success"
+            self._event("time_power",charges=self.time_power_charges)
 
     @property
     def difficulty(self):
@@ -58,20 +87,30 @@ class TimedGame:
         self.events.append({"event":kind,"monotonic_offset_s":round(timestamp-self.started_at,6),
                             "game_elapsed_s":round(self.elapsed,6),**data})
 
-    def award(self, points, message="NICE!"):
+    def award(self, points, message="NICE!", **event_data):
         self.combo += 1
         self.best_combo = max(self.best_combo,self.combo)
         points = round(points * (min(3., 1.+.12*(self.level-1)) if self.endless else 1.))
         self.score += int(points)
         self.feedback, self.feedback_until = message, self.elapsed+.8
         self.feedback_kind="success"
-        self._event("score",points=int(points),score=self.score,combo=self.combo)
+        self._event("score",points=int(points),score=self.score,combo=self.combo,**event_data)
+        if self.endless and self.combo%12==0 and self.time_power_charges<2:
+            self.time_power_charges+=1
+            self._event("time_power_ready",charges=self.time_power_charges)
         if self.endless and self.combo % 12 == 0 and self.lives < self.max_lives:
             self.lives += 1
             self.feedback = "12 HIT CHAIN / SHIELD RESTORED!"
             self._event("shield_restored",lives=self.lives)
 
     def miss(self, message="TRY THE NEXT ONE"):
+        if self.time_power_active:
+            self.time_power_until=0.
+            self.blocks+=1
+            self.feedback,self.feedback_until="TIME SHIELD / HIT ABSORBED!",self.elapsed+1.1
+            self.feedback_kind="success"
+            self._event("time_block",blocks=self.blocks)
+            return False
         self.combo = 0
         self.violations += 1
         self.feedback, self.feedback_until = message, self.elapsed+.8
@@ -81,6 +120,7 @@ class TimedGame:
             self.lives=max(0,self.lives-1)
             if self.lives==0:
                 self.finish(False)
+        return True
 
     def running_energy(self, dt, actions, drain):
         self.energy = min(100., max(0., self.energy + (actions.run*13.-drain)*dt))
@@ -108,10 +148,12 @@ class TimedGame:
             if not self.paused:
                 self._event("tracking_paused")
             self.paused=True
+            self._power_held=self.time_power_progress=0.
             self.on_pause()
             return self.events[before:]
         if self.paused:
             self.paused=False
+            self.on_resume(actions or MotionInput())
             self._event("tracking_resumed")
             return self.events[before:]
         if self.countdown:
@@ -130,6 +172,7 @@ class TimedGame:
             step=min(dt,1/60) if self.endless else min(dt,1/60,self.remaining)
             self.elapsed+=step
             if self.endless:
+                self.update_power(step,actions or MotionInput())
                 level=1+int(self.elapsed/25.)
                 if level>self.level:
                     self.level=level
@@ -145,6 +188,9 @@ class TimedGame:
         pass
 
     def on_start(self, actions):
+        pass
+
+    def on_resume(self, actions):
         pass
 
     def advance(self, dt, actions):

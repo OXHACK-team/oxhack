@@ -82,6 +82,32 @@ def clock_icon(surface, center, radius=16, color=CYAN, time_angle=0.):
     pygame.draw.line(surface, color, center, (x + radius * .45, y + radius * .2), 2)
 
 
+def progress_track(surface,rect,progress,color=CYAN):
+    rect=pygame.Rect(rect)
+    pygame.draw.rect(surface,(35,54,71),rect,border_radius=max(2,rect.height//2))
+    value=max(0.,min(1.,progress))
+    if value:
+        fill=pygame.Rect(rect.x,rect.y,max(rect.height,round(rect.width*value)),rect.height)
+        pygame.draw.rect(surface,color,fill,border_radius=max(2,rect.height//2))
+
+
+def medal(surface,center,grade,color=ORANGE,radius=57,phase=0.):
+    x,y=center
+    for i in range(24):
+        angle=i*math.tau/24
+        length=8 if i%2==0 else 4
+        outer=(x+math.sin(angle)*(radius+12),y+math.cos(angle)*(radius+12))
+        inner=(x+math.sin(angle)*(radius+12-length),y+math.cos(angle)*(radius+12-length))
+        pygame.draw.line(surface,color if i%2==0 else EDGE,inner,outer,2)
+    points=[(x+math.sin(i*math.tau/6)*radius,y+math.cos(i*math.tau/6)*radius) for i in range(6)]
+    pygame.draw.polygon(surface,(10,26,42),points)
+    pygame.draw.polygon(surface,color,points,3)
+    pygame.draw.circle(surface,tuple(round(c*.35) for c in color),(round(x),round(y)),radius-11,1)
+    text(surface,grade,(x,y-3),round(radius*1.15),color,True,True)
+    for dx in (-17,0,17):
+        pygame.draw.circle(surface,color,(round(x+dx),round(y+radius*.60)),2)
+
+
 class Background:
     def __init__(self):
         self.base = pygame.Surface((W, H))

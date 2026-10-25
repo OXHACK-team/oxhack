@@ -51,6 +51,7 @@ class Config:
     lean_threshold: float = .22
     crouch_threshold: float = .28
     endless: bool = True
+    reduced_motion: bool = False
 
     @classmethod
     def load(cls, path=ROOT / "config.json"):

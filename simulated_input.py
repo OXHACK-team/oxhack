@@ -8,7 +8,7 @@ class SimulatedInput:
     def __init__(self):
         self.phase = 0.
 
-    def sample(self, now, dt, raise_hand=False, running=False, crouch=False, lean=0., lost=False, cursor=None,both_up=False,right_up=False):
+    def sample(self, now, dt, raise_hand=False, running=False, crouch=False, lean=0., lost=False, cursor=None,both_up=False,right_up=False,time_power=False):
         if lost:
             return TrackingFrame(now, status="Simulated tracking lost")
         p = neutral_pose()
@@ -42,4 +42,9 @@ class SimulatedInput:
             p[RW,:2]=[shoulder[0]+(cursor[0]/1440-.5)*torso*HAND_REACH_WIDTH,
                       shoulder[1]-torso*.65+(cursor[1]/900)*torso*1.6]
             p[RE,:2]=(p[RS,:2]+p[RW,:2])/2
+        if time_power:
+            p[LW,:2]=p[RS,:2]+[-.015,.03]
+            p[RW,:2]=p[LS,:2]+[.015,.03]
+            p[LE,:2]=p[LS,:2]+[-.04,.15]
+            p[RE,:2]=p[RS,:2]+[.04,.15]
         return TrackingFrame(now, p, people=1, status="Demo player", aspect=4/3)

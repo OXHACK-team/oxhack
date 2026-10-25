@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import sqlite3
 from config import ROOT
+from progression import xp_for,profile_for
 
 
 class Storage:
@@ -22,7 +23,8 @@ class Storage:
                                 "score":"INTEGER NOT NULL DEFAULT 0",
                                 "metric":"TEXT NOT NULL DEFAULT 'time'",
                                 "match_seed":"INTEGER NOT NULL DEFAULT 0",
-                                "variant":"TEXT NOT NULL DEFAULT 'challenge'"}.items():
+                                "variant":"TEXT NOT NULL DEFAULT 'challenge'",
+                                "xp":"INTEGER NOT NULL DEFAULT 0"}.items():
             if name not in columns:
                 self.connection.execute(f"ALTER TABLE results ADD COLUMN {name} {definition}")
         self.connection.commit()
@@ -39,8 +41,8 @@ class Storage:
         if not game.finished:
             raise ValueError("Cannot save an unfinished round")
         with self.connection:
-            cursor = self.connection.execute("INSERT INTO results(created_utc,player,mode,won,elapsed,remaining,violations,events,game_id,session_mode,score,metric,match_seed,variant) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (datetime.now(timezone.utc).isoformat(), player, mode, int(game.won), game.elapsed, game.remaining, game.violations, json.dumps(game.events),game.game_id,session_mode,game.score,game.metric,seed,"endless" if getattr(game,"endless",False) else "challenge"))
+            cursor = self.connection.execute("INSERT INTO results(created_utc,player,mode,won,elapsed,remaining,violations,events,game_id,session_mode,score,metric,match_seed,variant,xp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (datetime.now(timezone.utc).isoformat(), player, mode, int(game.won), game.elapsed, game.remaining, game.violations, json.dumps(game.events),game.game_id,session_mode,game.score,game.metric,seed,"endless" if getattr(game,"endless",False) else "challenge",xp_for(game)))
         return cursor.lastrowid
 
     def leaderboard(self, mode="camera", limit=5,game_id="red_green",session_mode="solo",metric="time",variant="challenge"):
@@ -50,3 +52,7 @@ class Storage:
 
     def close(self):
         self.connection.close()
+
+    def profile(self,player,mode="camera"):
+        xp,runs=self.connection.execute("SELECT COALESCE(SUM(xp),0),COUNT(*) FROM results WHERE player=? AND mode=?",(player,mode)).fetchone()
+        return profile_for(xp,runs)

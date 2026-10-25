@@ -7,7 +7,7 @@ from motion_input import MotionInput
 
 def update_game(game,now,actions,valid):
     if game.game_id=="red_green":
-        return game.update(now,actions.run,actions.motion,valid)
+        return game.update(now,actions.run,actions.motion,valid,time_power=actions.time_power)
     return game.update(now,actions,valid)
 
 

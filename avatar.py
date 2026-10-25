@@ -31,6 +31,11 @@ def demonstration_pose(name="IDLE",now=0.):
         p[RW,1]-=swing*.11
         p[LE,1]+=swing*.05
         p[RE,1]-=swing*.05
+    elif name=="TIME SHIELD":
+        p[LW,:2]=p[RS,:2]+[-.015,.03]
+        p[RW,:2]=p[LS,:2]+[.015,.03]
+        p[LE,:2]=p[LS,:2]+[-.04,.15]
+        p[RE,:2]=p[RS,:2]+[.04,.15]
     else:
         p[[NOSE,LS,RS,LE,RE,LW,RW],1]+=math.sin(now*2)*.006
     return p

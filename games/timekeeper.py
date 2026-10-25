@@ -56,3 +56,8 @@ class Timekeeper(TimedGame):
 
     def on_start(self,actions):
         self.was_raised=actions.raised
+
+    def on_resume(self,actions):
+        # Establish the actual reacquired hand state. A lowered hand can produce
+        # a fresh beat edge; an already raised hand cannot manufacture one.
+        self.was_raised=actions.raised

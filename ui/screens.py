@@ -5,9 +5,13 @@ from games import GAME_CARDS,MODES,SURVIVAL_RULES
 from match import ranking_key
 from avatar import demonstration_pose
 from tracking_types import neutral_pose
+from simulated_input import SimulatedInput
 from ui.art import gradient
 from ui.components import Button,GameCard,ModeCard
 from ui.worlds import Worlds,playfields,hand_area
+from ui.ratings import rate_run
+from ui.tracking_preview import draw_tracking_overlay
+from progression import xp_for
 from ui.theme import *
 
 
@@ -17,6 +21,10 @@ class Screens:
         self.worlds=Worlds(app)
         self.preview_key=None
         self.preview_image=None
+        self.rating_game=None
+        self.result_rating=None
+        self.shield_pose=SimulatedInput().sample(0.,0.,time_power=True).landmarks
+        self.practice_reach_pose=SimulatedInput().sample(0.,0.,cursor=(720,315)).landmarks
         self.cards=[GameCard(card,(40+(i%3)*462,222+(i//3)*294,436,270),app.art) for i,card in enumerate(GAME_CARDS)]
         self.modes=[ModeCard("mode_"+key,(40+(i%2)*692,270+(i//2)*209,668,179),title,description,[1,0,2,3][i],[CYAN,PURPLE,ORANGE,GREEN][i]) for i,(key,(title,description)) in enumerate(MODES.items())]
         self.veil=pygame.Surface((W,H),pygame.SRCALPHA)
@@ -39,7 +47,8 @@ class Screens:
         if scene=="menu":
             return [b("play",(60,484,550,88),"LET'S PLAY","Choose from six motion challenges",ORANGE,primary=True),
                     b("how",(60,591,264,70),"HOW TO PLAY"),b("settings",(346,591,264,70),"SETTINGS"),
-                    b("exit",(60,680,264,58),"EXIT",color=MUTED)]+common
+                    b("quick_play",(60,680,264,58),"QUICK PLAY",color=CYAN),
+                    b("exit",(346,680,264,58),"EXIT",color=MUTED)]+common
         if scene=="select":
             return self.cards+common
         if scene=="mode":
@@ -51,11 +60,15 @@ class Screens:
             if a.session_mode=="party" and a.party_results:
                 for button in result[1:]:
                     button.enabled=False
+            result.append(b("practice",(64,422,305,48),"PRACTICE MOVES",color=CYAN))
             if a.session_mode=="ai":
                 result+=[b("difficulty_"+key,(760+i*217,649,206,54),key.upper(),color=PURPLE,primary=a.config.ai_difficulty==key) for i,key in enumerate(("easy","normal","hard"))]
             elif a.session_mode=="party":
                 result+=[b("party_less",(762,649,160,54),"- PLAYER"),b("party_more",(1240,649,160,54),"+ PLAYER")]
             return result+common
+        if scene=="practice":
+            complete=getattr(a,"practice",None) is not None and a.practice.complete
+            return [b("start",(760,743,640,73),"START THE GAME" if complete else "SKIP PRACTICE / START GAME",color=ORANGE,primary=True)]+common
         if scene=="lobby":
             return ([b("join_demo",(535,772,370,50),"JOIN BOTH / ENTER",color=ORANGE,primary=True)] if a.demo else [])+common
         if scene=="how":
@@ -64,6 +77,7 @@ class Screens:
             return [b("less",(74,347,240,63),"- LOWER"),b("more",(338,347,240,63),"+ HIGHER"),
                     b("sound",(74,456,504,68),"SOUND: "+("ON" if a.config.sound else "OFF")),
                     b("preview",(74,547,504,68),"CAMERA PREVIEW: "+("ON" if a.config.show_preview else "OFF")),
+                    b("reduced_motion",(74,637,504,63),"REDUCED MOTION: "+("ON" if getattr(a.config,"reduced_motion",False) else "OFF")),
                     b("calibrate",(796,624,560,69),"RECALIBRATE PLAYER",color=PURPLE),
                     b("menu",(74,741,504,74),"DONE",color=ORANGE,primary=True),
                     b("camera_mode",(796,741,560,74),"USE WEBCAM" if a.demo else "USE KEYBOARD DEMO",color=CYAN)]+common
@@ -79,7 +93,8 @@ class Screens:
         return common
 
     def hand_area(self,slot=0):
-        count=len(self.a.match.games) if self.a.match else 1
+        practice=getattr(self.a,"practice",None)
+        count=len(practice.players) if self.a.scene=="practice" and practice is not None else len(self.a.match.games) if self.a.match else 1
         return hand_area(playfields(count)[slot])
 
     def draw(self,now):
@@ -91,7 +106,7 @@ class Screens:
         else:
             s.blit(gradient(W,H,215,246),(0,0))
         # Fine airborne time particles keep every page alive without visual noise.
-        for i in range(24):
+        for i in range(0 if getattr(a.config,"reduced_motion",False) else 24):
             x=(i*167+now*(5+i%4))%W
             y=(i*131-now*(3+i%3))%H
             pygame.draw.circle(s,(132,146,135),(round(x),round(y)),1)
@@ -138,15 +153,15 @@ class Screens:
             hint="H: HOLD TO RAISE YOUR HAND   /   ENTER: JOIN QUICKLY   /   F2: RESTART DEMO"
         elif a.scene=="lobby" and a.demo:
             hint="PLAYER 1: HOLD H   /   PLAYER 2: HOLD T   /   ENTER: JOIN BOTH QUICKLY"
-        elif a.scene=="game" and a.demo and a.selected_game=="lightning":
+        elif a.scene in ("game","practice") and a.demo and a.selected_game=="lightning":
             hint="P1: MOVE MOUSE TO AIM YOUR HAND   /   P2: W A S D TO AIM   /   REACH THE GLOWING ORB"
-        elif a.scene=="game" and a.demo:
+        elif a.scene in ("game","practice") and a.demo:
             hint={"red_green":"P1: HOLD SPACE TO JOG / RELEASE TO FREEZE   |   P2: HOLD SHIFT / RELEASE TO FREEZE",
                   "sprint":"P1: HOLD SPACE TO JOG   |   P2: HOLD SHIFT TO JOG   |   KEEP GOING THROUGH TIME WARP",
                   "dodge":"P1: LEFT / RIGHT ARROWS TO LEAN, C TO DUCK   |   P2: A / D TO LEAN, S TO DUCK",
                   "timekeeper":"P1: TAP H WHEN RINGS MEET   |   P2: TAP T   |   RELEASE BETWEEN BEATS",
                   "echo":"P1: ARROWS LEAN / C DUCK / U HANDS UP   |   P2: A D / S / W   |   WATCH, THEN REPEAT"}.get(a.selected_game,"")
-        elif a.scene=="game":
+        elif a.scene in ("game","practice"):
             hint=a.card["control"]+"  /  FOLLOW THE LARGE MOVEMENT PROMPT"
         else:
             hint="HAND: HOVER + HOLD 1s   /   MOUSE: CLICK   /   ARROWS + ENTER"
@@ -173,10 +188,9 @@ class Screens:
                 ratio=min((rect.width-8)/source.get_width(),(rect.height-8)/source.get_height())
                 self.preview_image=pygame.transform.smoothscale(source,(round(source.get_width()*ratio),round(source.get_height()*ratio)))
                 self.preview_key=key
-            s.blit(self.preview_image,self.preview_image.get_rect(center=rect.center))
-            if a.dual_active:
-                pygame.draw.line(s,ORANGE,(rect.centerx,rect.top+8),(rect.centerx,rect.bottom-8),2)
-            pill(s,"YOU / MIRRORED",(rect.x+9,rect.y+8),CYAN,10)
+            image_rect=self.preview_image.get_rect(center=rect.center)
+            s.blit(self.preview_image,image_rect)
+            draw_tracking_overlay(s,image_rect,frame,a.dual_active,now)
         else:
             clock_icon(s,(rect.centerx,rect.centery-15),22,CYAN,now*.4)
             text(s,"SIMULATED BODY" if a.demo else "PREVIEW OFF" if not a.config.show_preview else "WAITING FOR CAMERA",(rect.centerx,rect.centery+28),14,MUTED,center=True,mono=True)
@@ -184,12 +198,46 @@ class Screens:
     def hero_avatar(self,now,cx=1014,top=241,height=375):
         a=self.a
         s=a.canvas
+        motion=0. if getattr(a.config,"reduced_motion",False) else now
+        center=(round(cx),round(top+height*.49))
+        radius=round(height*.67)
+        for i in range(3):
+            r=radius+i*24
+            pygame.draw.arc(s,(28+i*8,83+i*10,100+i*9),(cx-r,center[1]-r,r*2,r*2),motion*.08+i*1.9,motion*.08+i*1.9+1.9,2)
+        for side in (-1,1):
+            x=round(cx+side*(radius+50))
+            pygame.draw.line(s,(41,89,108),(x,top+105),(x,top+height-40),2)
+            pygame.draw.line(s,CYAN,(x-8,top+105),(x+8,top+105),2)
+            pygame.draw.line(s,CYAN,(x-8,top+height-40),(x+8,top+height-40),2)
         floor=pygame.Rect(cx-200,top+height,400,65)
         pygame.draw.ellipse(s,(12,47,60),floor)
         pygame.draw.ellipse(s,(75,194,194),floor,3)
         pygame.draw.ellipse(s,(182,234,215),floor.inflate(-33,-12),1)
         p=a.player.smoothed if a.player.valid else None
         a.avatar.draw(s,p,cx,top,height,a.frame.aspect,now,neutral=a.player.neutral if a.player.valid else None)
+
+    def profile_rail(self,rect,compact=False,profile=None,gained=None):
+        a=self.a
+        s=a.canvas
+        rect=pygame.Rect(rect)
+        profile=(getattr(a,"profile",{}) if profile is None else profile) or {}
+        level=int(profile.get("level",1))
+        title=str(profile.get("title","TIME ROOKIE")).upper()
+        progress=float(profile.get("progress",0.))
+        if compact:
+            text(s,f"LV {level:02d} / {title}",(rect.x,rect.y+4),12,CYAN,True,mono=True)
+            progress_track(s,(rect.x+277,rect.y+11,267,6),progress,CYAN)
+            label=f"+{gained:,} XP" if gained is not None else f"{int(profile.get('xp',0)):,} TOTAL XP"
+            fit_text(s,label,(rect.right-160,rect.y+2),160,17,GREEN,True)
+            return
+        panel(s,rect,(12,31,46),EDGE,16)
+        panel(s,(rect.x+14,rect.y+10,43,43),(18,55,65),CYAN,12)
+        text(s,f"{level:02d}",(rect.x+35,rect.y+31),24,CYAN,True,True,mono=True)
+        fit_text(s,title,(rect.x+76,rect.y+10),310,19,WHITE,True)
+        text(s,f"PLAYER LEVEL / {int(profile.get('runs',0))} RECORDED RUNS",(rect.x+76,rect.y+35),11,MUTED,mono=True)
+        text(s,"YOUR NEXT LEVEL",(rect.x+430,rect.y+12),11,MUTED,mono=True)
+        progress_track(s,(rect.x+430,rect.y+37,rect.width-660,7),progress,CYAN)
+        fit_text(s,f"{int(profile.get('level_xp',0)):,} / {int(profile.get('next_level_xp',500)):,} XP",(rect.right-197,rect.y+16),180,18,CYAN,True,mono=True)
 
     def draw_welcome(self,now):
         self.join_page(now,False)
@@ -236,21 +284,17 @@ class Screens:
     def draw_menu(self,now):
         a=self.a
         s=a.canvas
-        pill(s,"6 GAMES. ONE RACE AGAINST TIME.",(60,129),CYAN,14)
+        pill(s,"6 MOTION GAMES / ENDLESS POSSIBILITIES",(60,129),CYAN,14)
         text(s,"OWN THE",(53,194),91,WHITE,True)
         text(s,"NEXT SECOND.",(53,289),86,WHITE,True)
-        text(s,"Move your body. Challenge your timing.",(63,405),26,MUTED)
+        text(s,"Your body is the controller. Time is your rival.",(63,405),25,MUTED)
         self.hero_avatar(now,1038,224,395)
-        pill(s,"LIVE MOTION AVATAR",(921,686),CYAN,14)
-        for i,(number,title,detail) in enumerate([("01","CHOOSE","Six games, four ways to play"),("02","MOVE","Hands, knees and perfect stillness"),("03","REPEAT","Chase your next personal best")]):
-            x=60+i*455
-            panel(s,(x,762,432,61),(12,31,46),EDGE,15)
-            text(s,number,(x+17,778),21,ORANGE,True,mono=True)
-            text(s,title,(x+64,770),17,WHITE,True)
-            text(s,detail,(x+64,797),13,MUTED)
+        pill(s,"YOUR MOTION / YOUR AVATAR",(903,686),CYAN,14)
+        self.profile_rail((60,762,1320,61))
 
     def draw_select(self,now):
-        self.title("CHOOSE YOUR CHALLENGE","Six ways to play with time. Pick any card to begin.")
+        self.title("FIND YOUR NEXT OBSESSION","Six sports. Four ways to compete. Every second counts.")
+        text(self.a.canvas,"01 SELECT A GAME     02 CHOOSE YOUR PLAYERS     03 MAKE TIME YOURS",(61,820),12,MUTED,mono=True)
 
     def draw_mode(self,now):
         a=self.a
@@ -267,6 +311,13 @@ class Screens:
         s.blit(gradient(674,605,0,230),(40,211))
         pygame.draw.rect(s,EDGE,(40,211,674,605),1,border_radius=20)
         pill(s,a.card["tag"],(62,234),a.card["color"],14)
+        text(s,"TRY BEFORE YOU PLAY",(388,439),14,MUTED,mono=True)
+        if a.config.endless:
+            panel(s,(63,486,627,94),(9,26,42),a.card["color"],15)
+            text(s,"TIME SHIELD / YOUR SECOND CHANCE",(82,502),17,a.card["color"],True)
+            detail="Hold R (P1) / F (P2) to arm your shield." if a.demo else "Cross your arms over your chest and hold briefly."
+            text(s,detail,(82,531),18,WHITE)
+            text(s,"Blocks one mistake for 5s. A 12-hit chain earns a charge.",(82,556),14,MUTED)
         wrapped(s,a.card["control"],(66,695),610,36,WHITE,bold=True)
         text(s,"THREE THINGS TO KNOW",(760,223),24,a.card["color"],True)
         for i,rule in enumerate(SURVIVAL_RULES[a.selected_game] if a.config.endless else a.card["rules"]):
@@ -303,39 +354,93 @@ class Screens:
             ring(s,(x+334,704),21,1. if ready else progress,color,4)
         self.preview((581,437,278,183),now)
         if not a.demo:
-            text(s,"Keep your arms inside your half. The game opens when both players have joined.",(720,790),21,MUTED,center=True)
+            text(s,"Keep your hips in your lane. Hands can cross the divider. Both players raise a hand to join.",(720,790),20,MUTED,center=True)
 
     def draw_how(self,now):
         a=self.a
         s=a.canvas
         self.title("WALK UP. STEP IN. PLAY.","No controller. No complicated setup. Just you and the clock.")
         panel(s,(40,220,674,596),(13,33,49),EDGE,22)
-        pose=["IDLE","LEFT HAND","LEFT","DUCK","RUN"][int(now/2)%5]
-        a.avatar.draw(s,demonstration_pose(pose,now),377,273,351,now=now,neutral=neutral_pose())
+        pose=["IDLE","LEFT HAND","LEFT","DUCK","RUN","TIME SHIELD"][int(now/2)%6]
+        shown=self.shield_pose if pose=="TIME SHIELD" else demonstration_pose(pose,now)
+        fit_text(s,"CROSS YOUR ARMS / TIME SHIELD" if pose=="TIME SHIELD" else "TRY IT / "+pose,(377,252),610,21,CYAN,True,True)
+        a.avatar.draw(s,shown,377,283,341,now=now,neutral=neutral_pose())
         pill(s,"YOUR AVATAR COPIES YOUR MOVEMENT",(183,698),CYAN,14)
-        steps=[("01","GET IN VIEW","Keep your head, hands and feet visible. Stand still with arms down."),
-               ("02","RAISE TO JOIN","Raise either hand above your head for 1.2 seconds."),
-               ("03","POINT TO CHOOSE","Aim with a hand. Hold one second; move away to select again."),
-               ("04","FOLLOW THE PROMPT","Each game gives three rules first, then large movement instructions.")]
+        steps=[("01","GET IN VIEW","Head, hands and feet in view. Stand still with arms down."),
+               ("02","RAISE TO JOIN","Hold either hand above your head for 1.2 seconds."),
+               ("03","POINT TO CHOOSE","Aim with a hand. Hold one second; move away after choosing."),
+               ("04","FOLLOW THE PROMPT","Three rules first. Jog, reach, dodge or match the large prompt."),
+               ("05","SAVE YOUR NEXT SECOND","In survival, cross arms and hold to arm your Time Shield.")]
         for i,(num,title,detail) in enumerate(steps):
-            y=221+i*119
-            panel(s,(760,y,640,102),(17,36,53),EDGE,16)
+            y=221+i*99
+            panel(s,(760,y,640,89),(17,36,53),EDGE,16)
             text(s,num,(781,y+20),24,ORANGE,True,mono=True)
-            text(s,title,(843,y+14),24,WHITE,True)
-            wrapped(s,detail,(844,y+50),529,18,MUTED)
+            text(s,title,(843,y+12),22,WHITE,True)
+            wrapped(s,detail,(844,y+45),529,16,MUTED)
 
     def draw_settings(self,now):
         a=self.a
         s=a.canvas
         self.title("FIND YOUR RHYTHM","Simple settings for a comfortable motion session.")
-        panel(s,(40,220,572,450))
+        panel(s,(40,220,572,492))
         text(s,"MOVEMENT SENSITIVITY",(75,252),18,MUTED,mono=True)
         text(s,f"{a.config.sensitivity:.1f}x",(75,286),38,CYAN,True)
-        wrapped(s,"Higher sensitivity responds to smaller movements.",(75,629),500,18,MUTED)
+        text(s,"Higher sensitivity needs less movement.",(75,419),16,MUTED)
         panel(s,(754,220,646,490))
         text(s,"YOUR CAMERA POSITION",(792,250),27,WHITE,True)
         self.preview((970,314,382,271),now)
         wrapped(s,"Head, hands and feet visible. Recalibration ends the current round.",(793,324),155,19,MUTED)
+
+    def draw_practice(self,now):
+        a=self.a
+        s=a.canvas
+        self.title("PRACTICE / "+a.card["short"],"Try the real controls. No score, no timer, no pressure. Start the game whenever you are ready.")
+        coach=getattr(a,"practice",None)
+        if coach is None:
+            return
+        fields=playfields(len(coach.players))
+        for slot,(rect,state) in enumerate(zip(fields,coach.players)):
+            color=CYAN if slot==0 else ORANGE
+            panel(s,(rect.x,rect.y,rect.width,548),(10,28,43),color,20)
+            pill(s,f"PLAYER {slot+1} / PRACTICE",(rect.x+20,rect.y+16),color,13)
+            text(s,"READY" if state.complete else f"MOVE {state.step_index+1} / {len(state.steps)}",(rect.right-132,rect.y+25),15,GREEN if state.complete else MUTED,True,mono=True)
+            step=state.current_step
+            message="MOVES MASTERED / YOU ARE READY" if state.complete else step.label
+            fit_text(s,message,(rect.centerx,rect.y+76),rect.width-48,30,GREEN if state.complete else color,True,True)
+            player=a.bank.players[slot]
+            detail="Great work. Choose START THE GAME to put it into practice." if state.complete else step.instruction if state.tracking_ok else player.message
+            wrapped(s,detail,(rect.x+28,rect.y+111),rect.width-56,17,MUTED,line_height=23)
+            # Each filled marker is an observed move, never a timed auto-demo.
+            for i in range(len(state.steps)):
+                x=rect.centerx+(i-(len(state.steps)-1)/2)*24
+                done=i<state.step_index
+                pygame.draw.circle(s,GREEN if done else color if i==state.step_index else EDGE,(round(x),rect.y+167),5,0 if done else 2)
+            pose=player.smoothed if player.valid else None
+            neutral=player.neutral if player.valid else None
+            aspect=a.bank.frames[slot].aspect if slot<len(a.bank.frames) else 4/3
+            a.avatar.draw(s,pose,rect.x+rect.width*.27,rect.y+213,248,aspect,now,slot>0,neutral,color)
+            shown=self.practice_reach_pose if step.kind=="REACH" else demonstration_pose("IDLE" if state.complete else step.demo_pose,now)
+            a.avatar.draw(s,shown,rect.x+rect.width*.73,rect.y+213,248,4/3,now,True,neutral_pose(),PURPLE)
+            text(s,"YOU / LIVE INPUT",(rect.x+rect.width*.27,rect.y+493),13,color,True,True)
+            text(s,"COPY THIS MOVE",(rect.x+rect.width*.73,rect.y+493),13,PURPLE,True,True)
+            if step.kind=="REACH" and not state.complete:
+                area=hand_area(rect)
+                target=(round(area.x+step.target[0]*area.width),round(area.y+step.target[1]*area.height))
+                pygame.draw.circle(s,(26,49,62),target,39)
+                ring(s,target,33,state.hold_progress,ORANGE,5)
+                pygame.draw.circle(s,ORANGE,target,15)
+                for hand in (state.last_action.left_hand,state.last_action.right_hand):
+                    center=(round(area.x+hand[0]*area.width),round(area.y+hand[1]*area.height))
+                    pygame.draw.circle(s,BG,center,12)
+                    pygame.draw.circle(s,color,center,9,3)
+                    pygame.draw.circle(s,WHITE,center,3)
+            else:
+                ring(s,(rect.centerx,rect.y+438),27,state.hold_progress,GREEN if state.complete else color,4)
+                text(s,"OK" if state.complete else "HOLD" if state.matching else "TRY",(rect.centerx,rect.y+438),12,GREEN if state.complete else MUTED,True,True)
+            progress=1. if state.complete else (state.step_index+state.hold_progress)/len(state.steps)
+            progress_track(s,(rect.x+28,rect.y+523,rect.width-56,7),progress,GREEN if state.complete else color)
+        ready="PRACTICE COMPLETE / LET'S PLAY" if coach.complete else "COPY THE MODEL / FILL EACH RING"
+        fit_text(s,ready,(42,789),682,18,GREEN if coach.complete else MUTED,True)
 
     def draw_game(self,now):
         a=self.a
@@ -344,7 +449,8 @@ class Screens:
         for i,(rect,game) in enumerate(zip(playfields(len(a.match.games)),a.match.games)):
             self.worlds.draw(s,rect,game,i,now)
         pill(s,"RUN BANKED" if a.match.finished else "POINT AT PAUSE + HOLD",(40,791),MUTED,13)
-        fit_text(s,"Your score is saved. Results are coming up..." if a.match.finished else "ENDLESS SURVIVAL / Keep going. Build your score." if a.config.endless else a.card["description"],(326,795),1060,21,MUTED)
+        detail="Your score is saved. Results are coming up..." if a.match.finished else ("TIME SHIELD: HOLD R / F  /  Block the next mistake" if a.demo else "TIME SHIELD: Cross your arms over your chest and hold") if a.config.endless else a.card["description"]
+        fit_text(s,detail,(326,795),1060,21,MUTED)
         if a.match.paused:
             overlay=pygame.Surface((W,H),pygame.SRCALPHA)
             overlay.fill((4,16,29,210))
@@ -357,11 +463,24 @@ class Screens:
             if missing:
                 message="Player "+", ".join(map(str,missing))+": stand still, arms down; then raise a hand to rejoin."
             elif countdown>0:
-                message="Players ready. Your score is safe. Get back into position."
+                cues=[]
+                for i,game in enumerate(a.match.games[:a.match.human_count]):
+                    if not game.finished:
+                        cues.append(f"P{i+1}: {self.resume_cue(game)}")
+                message="Get ready. "+" / ".join(cues)
             wrapped(s,message,(446,344),550,23,WHITE)
             wrapped(s,"Reconnect with your body. Your run resumes automatically. P1 stays LEFT; P2 stays RIGHT." if a.dual_active else "Reconnect with your body. Your run resumes automatically after a short countdown.",(446,415),550,18,MUTED)
             if missing:
                 self.preview((1068,504,312,208),now)
+
+    @staticmethod
+    def resume_cue(game):
+        if game.game_id=="dodge":
+            return "DUCK" if game.required=="DUCK" else "LEAN "+game.required
+        if game.game_id=="red_green":
+            return "FREEZE" if game.phase=="RED" else "JOG"
+        return {"sprint":"JOG","timekeeper":"LOWER HANDS","lightning":"FIND YOUR ORB",
+                "echo":"GET READY TO REMEMBER"}[game.game_id]
 
     def draw_results(self,now):
         a=self.a
@@ -382,18 +501,28 @@ class Screens:
             g=entries[0][1]
         self.title(title,a.card["title"]+"  /  "+MODES[a.session_mode][0])
         celebratory=g.won or a.personal_best or (g.endless and g.score>0)
-        if celebratory:
+        if celebratory and not getattr(a.config,"reduced_motion",False):
             for i in range(70):
                 x=(i*179+math.sin(now+i)*24)%W
                 y=((now-a.scene_started)*80+i*53)%670+150
                 pygame.draw.rect(s,[CYAN,GREEN,PURPLE,ORANGE][i%4],(x,y,4,8),border_radius=2)
         panel(s,(40,224,788,476),(14,34,51),EDGE,22)
+        if self.rating_game is not g:
+            self.rating_game=g
+            self.result_rating=rate_run(g)
+        rating=self.result_rating
         badge=("SHARED FIRST PLACE" if len(party_winners)>1 else "PARTY CHAMPION") if champion else "NEW PERSONAL BEST" if a.personal_best else "CHALLENGE CLEARED" if g.won else "ANOTHER SECOND. ANOTHER CHANCE."
         pill(s,badge,(68,249),GREEN if g.won else ORANGE,14)
         text(s,shown_name,(70,307),25,MUTED)
-        value=f"{g.elapsed:.2f}s" if g.metric=="time" and g.won else "TIME OUT" if g.metric=="time" else f"{g.score:,}"
-        text(s,value,(65,344),81,WHITE,True)
+        reveal=1. if getattr(a.config,"reduced_motion",False) else min(1.,max(0.,(now-a.scene_started)/1.05))
+        reveal=1.-(1.-reveal)**3
+        value=f"{g.elapsed:.2f}s" if g.metric=="time" and g.won else "TIME OUT" if g.metric=="time" else f"{round(g.score*reveal):,}"
+        fit_text(s,value,(65,344),515,81,WHITE,True)
         text(s,"COMPLETION TIME" if g.metric=="time" else "POINTS SCORED",(72,445),15,MUTED,mono=True)
+        medal(s,(704,363),rating.grade,rating.color,55)
+        fit_text(s,rating.title,(704,442),205,17,rating.color,True,True)
+        text(s,rating.next_target,(70,476),13,MUTED,mono=True)
+        progress_track(s,(70,499,728,4),rating.progress,rating.color)
         current_value=g.elapsed if g.metric=="time" and g.won else g.score if g.metric=="score" else None
         best=a.previous_best
         if champion:
@@ -405,9 +534,15 @@ class Screens:
                 ("SURVIVED" if g.endless else "TIME LEFT",f"{g.elapsed if g.endless else g.remaining:.1f}s"),("LEVEL REACHED" if g.endless else "VIOLATIONS" if g.game_id=="red_green" else "MISSES",str(g.level if g.endless else g.violations))]
         for i,(label,value) in enumerate(values):
             x=68+i*245
-            panel(s,(x,510,224,142),(21,44,61),EDGE,16)
-            text(s,label,(x+17,531),13,MUTED,mono=True)
-            text(s,value,(x+17,565),34,GREEN if i==0 else WHITE,True)
+            panel(s,(x,518,224,111),(21,44,61),EDGE,16)
+            text(s,label,(x+17,536),13,MUTED,mono=True)
+            text(s,value,(x+17,563),34,GREEN if i==0 else WHITE,True)
+        text(s,rating.highlight,(70,638),12,MUTED,mono=True)
+        result_profile=getattr(a,"result_profiles",{}).get(shown_name)
+        if result_profile is None and shown_name==a.config.player_name:
+            result_profile=getattr(a,"profile",{})
+        if result_profile is not None:
+            self.profile_rail((70,664,728,26),compact=True,profile=result_profile,gained=xp_for(g))
         panel(s,(858,224,542,476),(14,34,51),EDGE,22)
         text(s,"PARTY STANDINGS" if a.session_mode=="party" else "MATCH STANDINGS" if len(entries)>1 else "YOUR LOCAL RECORDS",(887,250),26,CYAN,True)
         if len(entries)>1 or a.session_mode=="party":

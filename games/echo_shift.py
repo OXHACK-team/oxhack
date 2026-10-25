@@ -69,7 +69,7 @@ class EchoShift(TimedGame):
         self.progress=min(1.,self.score/self.goal)
 
     def on_pause(self):
-        self.pose_held=0.
+        pass  # earned pose holds freeze with the recall clock
 
     def success(self):
         return False

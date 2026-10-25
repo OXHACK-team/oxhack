@@ -58,9 +58,9 @@ class RedLightGreenLight(TimedGame):
         self.events.append({"event": kind, "monotonic_offset_s": round(now - self.started_at, 6),
                             "game_elapsed_s": round(self.elapsed, 6), **extra})
 
-    def update(self, now, run_score, motion_score, tracking_ok=True):
+    def update(self, now, run_score, motion_score, tracking_ok=True, time_power=False):
         if self.endless:
-            return super().update(now,MotionInput(run=run_score,motion=motion_score),tracking_ok)
+            return super().update(now,MotionInput(run=run_score,motion=motion_score,time_power=time_power),tracking_ok)
         dt = max(0., now - self.last_update)
         self.last_update = now
         if self.finished:
@@ -149,10 +149,10 @@ class RedLightGreenLight(TimedGame):
             self.motion_held=self.motion_held+dt if self.motion_high else 0.
             if self.motion_held>=self.config.red_motion_hold_seconds:
                 self.phase_penalized=True
-                self.progress=max(0.,self.progress-self.config.penalty_progress)
-                self.warning_until=self.elapsed+1.15
-                self.miss("YOU MOVED / ONE SHIELD LOST")
-                self._event("red_violation",motion_score=round(actions.motion,4))
+                if self.miss("YOU MOVED / ONE SHIELD LOST"):
+                    self.progress=max(0.,self.progress-self.config.penalty_progress)
+                    self.warning_until=self.elapsed+1.15
+                    self._event("red_violation",motion_score=round(actions.motion,4))
         if self.phase_elapsed>=self.phase_duration:
             self.phase="RED" if self.phase=="GREEN" else "GREEN"
             self.phase_number+=1

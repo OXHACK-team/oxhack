@@ -50,7 +50,10 @@ class GestureController:
         x = .5 + (hand[0] - shoulder[0]) * (frame.aspect/(4/3)) / (torso * HAND_REACH_WIDTH)
         y = (hand[1] - (shoulder[1] - torso * .65)) / (torso * 1.6)
         desired = np.clip([x, y], .015, .985) * [width, height]
-        alpha = 1 - math.exp(-max(.001, dt) / self.config.cursor_smoothing_seconds)
+        distance=0. if self.position is None else float(np.linalg.norm(desired-self.position))
+        blend=min(1.,max(0.,(distance-35.)/220.))
+        tau=self.config.cursor_smoothing_seconds*(1.-blend)+min(.028,self.config.cursor_smoothing_seconds)*blend
+        alpha = 1 - math.exp(-max(.001, dt) / tau)
         self.position = desired if self.position is None else self.position + alpha * (desired - self.position)
         return self.position
 

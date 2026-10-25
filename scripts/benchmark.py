@@ -15,6 +15,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames",type=int,default=300)
     parser.add_argument("--headless",action="store_true")
+    parser.add_argument("--stress",action="store_true",help="Play both competitors with body inputs to measure sustained effects and rig transforms")
     parser.add_argument("--mode",choices=("solo","ai","duo"),default="solo")
     parser.add_argument("--game",choices=("red_green","lightning","dodge","sprint","timekeeper","echo"),default="red_green")
     args=parser.parse_args()
@@ -24,6 +25,7 @@ def main():
     from config import Config
     from game_manager import App
     from tracking_types import neutral_pose
+    from tests.smoke import controls_for
     import numpy as np
     with tempfile.TemporaryDirectory() as temp:
         app=App(Config(),demo=True,windowed=True,data_path=Path(temp)/"benchmark.sqlite3")
@@ -39,16 +41,24 @@ def main():
             for i in range(args.frames+10):
                 start=time.perf_counter()
                 now+=1/60
-                app.step(1/60,now,events=[],controls={"running":getattr(app.game,"phase","GREEN")=="GREEN","p2":{"running":True}})
+                if args.stress:
+                    controls=controls_for(app.game)
+                    if app.match.human_count==2:
+                        controls["p2"]=controls_for(app.match.games[1])
+                else:
+                    controls={"running":getattr(app.game,"phase","GREEN")=="GREEN","p2":{"running":True}}
+                app.step(1/60,now,events=[],controls=controls)
                 app.render(now)
                 elapsed=(time.perf_counter()-start)*1000
                 if i>=10:
                     times.append(elapsed)
-            report={"frames":len(times),"driver":"dummy" if args.headless else "native window","mode":args.mode,"game":args.game,
+            report={"frames":len(times),"driver":"dummy" if args.headless else "native window","mode":args.mode,"game":args.game,"stress":args.stress,
                     "median_frame_ms":float(np.median(times)),"p95_frame_ms":float(np.quantile(times,.95)),
                     "uncapped_mean_fps":1000/float(np.mean(times)),"scope":"render + synthetic input; webcam inference measured separately"}
             (ROOT/"artifacts").mkdir(exist_ok=True)
             name="benchmark-report.json" if args.mode=="solo" else f"benchmark-{args.mode}-report.json"
+            if args.stress:
+                name=f"benchmark-{args.mode}-{args.game}-stress.json"
             (ROOT/"artifacts"/name).write_text(json.dumps(report,indent=2)+"\n")
             print(json.dumps(report,indent=2))
         finally:

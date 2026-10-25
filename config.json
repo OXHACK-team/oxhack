@@ -47,5 +47,6 @@
   "ai_difficulty": "normal",
   "lean_threshold": 0.22,
   "crouch_threshold": 0.28,
-  "endless": true
+  "endless": true,
+  "reduced_motion": false
 }

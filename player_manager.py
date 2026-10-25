@@ -4,6 +4,51 @@ import numpy as np
 from tracking_types import *
 
 
+def visibility_message(frame, now, config):
+    """Explain the actual failed tracking gate without guessing its cause."""
+    p=frame.landmarks
+    if now-frame.timestamp>config.tracking_stale_seconds:
+        return "Waiting for a fresh camera frame. Keep your position."
+    if p is None or frame.people!=1:
+        return frame.status if frame.status and frame.status!="Looking for a player" else "Move into view with your head, hands and feet visible."
+    groups={"head":[NOSE],"hands":[LE,RE,LW,RW],"feet":[LK,RK,LA,RA],"body":[LS,RS,LH,RH]}
+    finite=np.isfinite(p[:,:2]).all(axis=1)
+    inside=finite & (p[:,0]>frame.x_bounds[0]) & (p[:,0]<frame.x_bounds[1]) & (p[:,1]>.015) & (p[:,1]<.985)
+    clipped={name for name,indices in groups.items() if any(finite[i] and not inside[i] for i in indices)}
+    head_vertical=finite[NOSE] and not .015<p[NOSE,1]<.985
+    feet_vertical=any(finite[i] and not .015<p[i,1]<.985 for i in groups["feet"])
+    if head_vertical and feet_vertical:
+        return "Step farther back: keep your head and both feet inside the camera."
+    if feet_vertical:
+        return "Step back until both knees and feet fit inside the camera."
+    if head_vertical:
+        return "Step back until your whole head fits inside the camera."
+    body_points=[NOSE,LS,RS,LH,RH,LK,RK,LA,RA]
+    left=any(finite[i] and p[i,0]<=frame.x_bounds[0] for i in body_points)
+    right=any(finite[i] and p[i,0]>=frame.x_bounds[1] for i in body_points)
+    if left!=right:
+        return f"Move {'RIGHT' if left else 'LEFT'} in the mirrored preview until your whole body fits."
+    if left and right:
+        return "Step farther back until your whole body fits across the camera."
+    if "hands" in clipped:
+        return "Bring both hands and elbows fully inside the camera view."
+    if "body" in clipped:
+        return "Step back and centre your shoulders and hips in the camera."
+    clear=np.isfinite(p[:,3]) & (p[:,3]>=config.tracking_confidence) & finite
+    unclear={name for name,indices in groups.items() if any(not clear[i] for i in indices)}
+    if len(unclear)>=3:
+        return "Tracking is unclear. Face the camera and check the lighting." if np.all(~clear[CORE]) else "Tracking is unclear. Face the camera with your full body visible."
+    if "feet" in unclear:
+        return "Keep both knees and feet visible; avoid hiding one leg behind the other."
+    if "hands" in unclear:
+        return "Keep both hands and elbows visible, away from your body."
+    if "head" in unclear:
+        return "Face the camera and keep your head clearly visible."
+    if "body" in unclear:
+        return "Face the camera with both shoulders and hips visible."
+    return "Keep your head, hands and feet clearly visible."
+
+
 class PlayerManager:
     def __init__(self, config, label="Player 1"):
         self.config = config
@@ -51,7 +96,7 @@ class PlayerManager:
             enough = bool(np.all((p[CORE, 0] > frame.x_bounds[0]) & (p[CORE, 0] < frame.x_bounds[1])) and
                           np.all((p[CORE, 1] > .015) & (p[CORE, 1] < .985)))
         if not fresh or not enough:
-            self._lost(now, frame.status if p is None or frame.people > 1 else "Move farther back: head, hands and feet must be visible")
+            self._lost(now, visibility_message(frame,now,self.config))
             return False
         center = np.mean(p[[LH, RH], :2], axis=0)
         scale = float(np.linalg.norm((np.mean(p[[LS, RS], :2], axis=0) - center) * [frame.aspect, 1]))
@@ -64,7 +109,15 @@ class PlayerManager:
         self.valid = True
         if frame.timestamp != self.last_timestamp:
             dt = .033 if self.last_timestamp is None else max(.001, frame.timestamp - self.last_timestamp)
-            alpha = 1 - math.exp(-dt / self.config.pose_smoothing_seconds)
+            # Stabilize small tracking noise while letting deliberate movements
+            # catch up rapidly. A fixed heavy filter made stopping/reaching lag.
+            if self.smoothed is None:
+                alpha=1.
+            else:
+                error=np.linalg.norm((p[:,:2]-self.smoothed[:,:2])*[frame.aspect,1],axis=1)/max(.08,self.body_scale)
+                activity=np.clip((error/max(dt,.02)-.15)/2.,0.,1.)
+                tau=self.config.pose_smoothing_seconds*(1.-activity)+min(.018,self.config.pose_smoothing_seconds)*activity
+                alpha=(1.-np.exp(-dt/tau))[:,None]
             self.smoothed = p.copy() if self.smoothed is None else self.smoothed + alpha * (p - self.smoothed)
             self.last_timestamp = frame.timestamp
         if self.registered:

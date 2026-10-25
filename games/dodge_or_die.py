@@ -44,4 +44,6 @@ class DodgeOrDie(TimedGame):
         return self.lives>0
 
     def on_pause(self):
-        self.dodged_held=0.
+        # Earned action time freezes with the obstacle. A wrong pose after
+        # resuming still clears the hold in advance().
+        pass
