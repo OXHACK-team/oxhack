@@ -401,3 +401,10 @@ Reference fixtures come from Google's
 The user-provided [Kinect Sports video](https://www.youtube.com/watch?v=-AuBrN5up8k&t=68s)
 set the presentation direction. Its metadata was retrieved; playback at the
 requested timestamp was unavailable in this environment.
+
+## Contributors
+
+- [Abdelrahman Soliman](https://github.com/Abdelrahman-Eyad)
+  — University of Essex, BSc Artificial Intelligence
+- [Mphiwa Tema Mantswe](https://github.com/nothingwastakenSoCallMeT) - University of Manchester, MEng Mechatronic Engineering
+- [Kesego Bogosi](https://github.com/Kesego-Bogosi) -University of Manchester,   BSc Computer Science
